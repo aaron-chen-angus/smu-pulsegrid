@@ -142,6 +142,8 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  will-change: transform;          /* stable compositor layer; no re-raster on fade */
+  backface-visibility: hidden;
 }
 
 /* =========================================================================
@@ -242,16 +244,20 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
   inset: 0;
   padding: 28px 32px 32px;
   opacity: 0;
-  transform: translateY(8px);
   pointer-events: none;
-  transition: opacity var(--transition), transform var(--transition);
+  transition: opacity var(--transition);
   overflow: hidden;
+  visibility: hidden;              /* fully remove inactive screens from paint */
 }
 .screen.active {
   opacity: 1;
-  transform: translateY(0);
   pointer-events: auto;
+  visibility: visible;
 }
+/* Keep the outgoing screen painted only while it fades (prevents a blank flash);
+   visibility toggles after the fade via the transition below. */
+.screen { transition: opacity var(--transition), visibility 0s linear var(--transition-ms, 300ms); }
+.screen.active { transition: opacity var(--transition), visibility 0s; }
 .screen-stub {
   height: 100%;
   display: flex;
@@ -460,6 +466,7 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
   object-fit: contain;              /* R12.2: never crop the frame */
   background: #02040a;
   display: block;
+  backface-visibility: hidden;      /* stable layer; avoids blank flash on screen fade */
 }
 .cam.mirror video { transform: scaleX(-1); }   /* mirrored selfie view */
 /* Faint scan-line texture over the letterbox margins; never over the video pixels. */
@@ -2293,7 +2300,12 @@ body[data-camtest="true"] #camtest {
   // ---- Stream negotiation (§3.13) ---------------------------------------
   // Try 4:3 at 1280x960; read back actual settings; fall back to 1280x720.
   function getStream() {
+    // Request the WIDEST sensible field of view so the user fits at ~1-1.5 m
+    // without stepping far back. We ask for a high resolution (the browser
+    // picks the camera's widest matching mode) and a 4:3 ratio for vertical
+    // coverage, then fall back progressively.
     var tryConstraints = [
+      { video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1440 }, aspectRatio: { ideal: 1.3333 } }, audio: false },
       { video: { facingMode: 'user', width: { ideal: PREF_W }, height: { ideal: PREF_H } }, audio: false },
       { video: { facingMode: 'user', width: { ideal: FB_W }, height: { ideal: FB_H } }, audio: false },
       { video: true, audio: false }
@@ -3096,12 +3108,17 @@ body[data-camtest="true"] #camtest {
     // Allow the controller to cancel (e.g. leaving the screen) before we return.
     run._cancel = function () { cancelled = true; };
 
-    // The expression model is optional: if it fails to load we still run the
-    // sampling loop (bars stay at 0) and finish, so PROCEED is never blocked.
+    // Load BOTH the live set (TinyFaceDetector + landmarks) AND the expression
+    // model. The expression pass needs the detector + landmark nets, not just
+    // faceExpressionNet — loading only the expression net was why 0 frames were
+    // ever collected.
     var exprOK = false;
-    return P().face.loadExpression()
-      .then(function () { exprOK = true; try { console.log('[emotion] expression model loaded'); } catch (e) {} })
-      .catch(function (err) { try { console.warn('[emotion] expression model FAILED to load', err); } catch (e) {} return null; })
+    return Promise.all([
+      P().face.loadLive().catch(function () { return null; }),
+      P().face.loadExpression()
+        .then(function () { exprOK = true; try { console.log('[emotion] expression model loaded'); } catch (e) {} })
+        .catch(function (err) { try { console.warn('[emotion] expression model FAILED', err); } catch (e) {} return null; })
+    ])
       .then(function () {
         if (!video) video = P().camera.getVideo();
         if (!video) { try { console.warn('[emotion] no video element'); } catch (e) {} }
@@ -3159,18 +3176,22 @@ body[data-camtest="true"] #camtest {
     }
   }
 
-  // Detect a single face with expressions; return the 7-prob map or null.
-  // Uses the full landmarks+expressions chain (the reliable path in face-api),
-  // falling back to the direct chain. Never throws or rejects into the loop.
+  // Lower-threshold detector just for the expression pass so modest lighting
+  // still yields detections (the live detector's 0.5 gate was too strict here).
+  function exprDetectorOpts() {
+    try {
+      return new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.2 });
+    } catch (e) { return P().face.tinyOpts(); }
+  }
+
+  // Detect a single face + expressions. Expressions do NOT require landmarks,
+  // so we skip that step (it needs an extra net and was failing). Never throws.
   var exprDiagLogged = false;
   function detectExpr(video) {
     try {
       if (!video || !window.faceapi) return Promise.resolve(null);
       var faceapi = window.faceapi;
-      // Full chain: detect -> landmarks -> expressions (what the library expects).
-      var p = faceapi.detectSingleFace(video, P().face.tinyOpts())
-        .withFaceLandmarks()
-        .withFaceExpressions();
+      var p = faceapi.detectSingleFace(video, exprDetectorOpts()).withFaceExpressions();
       return Promise.resolve(p).then(function (res) {
         if (!res) {
           if (!exprDiagLogged) { exprDiagLogged = true; try { console.warn('[emotion] no face detected in expression pass'); } catch (e) {} }
@@ -3181,10 +3202,7 @@ body[data-camtest="true"] #camtest {
           if (!exprDiagLogged) { exprDiagLogged = true; try { console.warn('[emotion] detection had no .expressions field', res); } catch (e) {} }
           return null;
         }
-        var score = (res.detection && res.detection.score != null) ? res.detection.score : 1;
-        if (score < MIN_CONF) return null;
-        // Expressions may be a plain object OR a class with .asSortedArray();
-        // read the 7 known fields defensively.
+        // The detector's own threshold already gated; accept the frame.
         function g(k) { return (ex[k] != null) ? ex[k] : 0; }
         return {
           neutral: g('neutral'), happy: g('happy'), sad: g('sad'),
@@ -4909,10 +4927,13 @@ body[data-camtest="true"] #camtest {
       .catch(function () { setMeter(0, 'Camera or pose model unavailable', 'alert'); });
   }
 
+  var lastTs = 0;
   function loop() {
     if (!running) return;
-    var ts = Math.round(performance.now() - tsBase);
-    var res = P().pose.detect(video, ts);
+    var ts = performance.now() - tsBase;
+    if (ts <= lastTs) ts = lastTs + 1;   // strictly increasing (detectForVideo)
+    lastTs = ts;
+    var res = P().pose.detect(video, Math.round(ts));
     var lm = P().pose.firstPose(res);
     evaluate(lm);
     drawPose(lm);
@@ -5366,8 +5387,13 @@ body[data-camtest="true"] #camtest {
     // While manually paused: keep the RAF alive but don't detect or record.
     if (state.paused) { state.raf = requestAnimationFrame(loop); return; }
 
-    var tsMs = Math.round(now - state.tsBase);
-    var res = P().pose.detect(state.video, tsMs);
+    // Strictly-increasing timestamp: detectForVideo throws if a timestamp
+    // repeats or goes backwards, which silently dropped the skeleton even while
+    // the person was fully in frame.
+    var tsMs = now - state.tsBase;
+    if (tsMs <= state.lastTs) tsMs = state.lastTs + 1;
+    state.lastTs = tsMs;
+    var res = P().pose.detect(state.video, Math.round(tsMs));
     var lm = P().pose.firstPose(res);
 
     // Elapsed from the player (so sync & reference lookup follow the video).
@@ -5689,7 +5715,7 @@ body[data-camtest="true"] #camtest {
       tracker: new window.PoseIntensity.IntensityTracker(),
       trail: [], prevLm: null,
       chartPts: [], matchWindow: [], curBin: null,
-      belowSince: null,
+      belowSince: null, lastTs: 0,
       paused: false, lastSeen: performance.now(),
       calibrated: false, nudging: false,
       autostart: !!sess.autostart,

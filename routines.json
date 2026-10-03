@@ -1,0 +1,13 @@
+[
+  {
+    "id": "test90",
+    "title": "90-Second Test Routine",
+    "youtubeId": "2VRPdBvuGow",
+    "aspect": "9:16",
+    "startSec": 0,
+    "endSec": 90,
+    "reference": "references/test90.json",
+    "metMin": 2.8,
+    "metMax": 8.0
+  }
+]

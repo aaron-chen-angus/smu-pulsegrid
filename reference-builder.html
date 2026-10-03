@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#05070D" />
+<title>PULSE//GRID — Reference Builder</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&display=swap"
+  rel="stylesheet"
+/>
+
+<style>
+/* Reuse the PULSE//GRID TRON tokens (design §3.14). This is an offline admin
+   tool, so it is allowed to scroll (unlike the main app). */
+:root {
+  --bg: #05070D;
+  --panel: rgba(10, 20, 35, 0.55);
+  --cyan: #00E5FF;
+  --orange: #FF8A00;
+  --white-60: rgba(255, 255, 255, 0.6);
+  --white-30: rgba(255, 255, 255, 0.3);
+  --alert: #FF3B5C;
+  --ok: #3DFFB0;
+  --glow: 0 0 12px currentColor;
+  --radius: 2px;
+  --font-title: 'Orbitron', ui-monospace, monospace;
+  --font-body: 'Rajdhani', ui-monospace, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: #e8f6ff; font-family: var(--font-body); font-weight: 500; }
+body {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(0,229,255,0.05), transparent 60%),
+    var(--bg);
+  padding: 32px 48px 64px;
+  font-variant-numeric: tabular-nums;
+}
+a { color: var(--cyan); }
+.head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.head h1 { font-family: var(--font-title); font-weight: 800; font-size: 34px; margin: 0; color: var(--cyan); letter-spacing: 0.1em; text-shadow: var(--glow); }
+.head .slash { color: var(--orange); }
+.head .sub { color: var(--white-60); font-size: 16px; }
+.lead { color: var(--white-60); max-width: 820px; line-height: 1.5; }
+.lead b { color: #eaffff; }
+
+.panel {
+  position: relative; background: var(--panel); border: 1px solid rgba(0,229,255,0.35);
+  border-radius: var(--radius); box-shadow: inset 0 0 24px rgba(0,229,255,0.06);
+  padding: 20px 22px; margin: 20px 0;
+}
+.panel::before, .panel::after { content: ""; position: absolute; width: 12px; height: 12px; border: 2px solid var(--cyan); }
+.panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.panel::after { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+.panel-title { font-family: var(--font-title); font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--white-60); margin: 0 0 14px; }
+
+.row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--white-60); font-family: var(--font-title); }
+input[type="text"], input[type="number"] {
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(0,229,255,0.3); color: #eaffff;
+  font-family: var(--font-body); font-weight: 600; font-size: 16px; padding: 10px 12px; border-radius: var(--radius); min-width: 160px;
+}
+input:focus { outline: none; border-color: var(--cyan); box-shadow: var(--glow); }
+
+.btn {
+  --c: var(--cyan); position: relative; min-height: 52px; padding: 0 24px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font-family: var(--font-title); font-weight: 700; font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--c); background: transparent; border: 1.5px solid var(--c); border-radius: var(--radius); cursor: pointer; overflow: hidden;
+}
+.btn::before { content: ""; position: absolute; inset: 0; background: var(--c); transform: translateX(-101%); transition: transform 250ms ease; z-index: -1; }
+.btn:hover:not([disabled]) { color: #05070D; box-shadow: var(--glow); }
+.btn:hover:not([disabled])::before { transform: translateX(0); }
+.btn.primary { --c: var(--orange); }
+.btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+input[type="file"] { display: none; }
+.drop {
+  border: 1px dashed rgba(0,229,255,0.4); border-radius: var(--radius); padding: 28px; text-align: center;
+  color: var(--white-60); cursor: pointer; transition: border-color 200ms, box-shadow 200ms;
+}
+.drop.dragover { border-color: var(--cyan); box-shadow: var(--glow); color: #eaffff; }
+.drop b { color: #eaffff; }
+
+.previewwrap { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+video { width: 100%; background: #02040a; border: 1px solid rgba(0,229,255,0.25); border-radius: var(--radius); display: block; }
+canvas.chart { width: 100%; height: 260px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); display: block; }
+
+.progress { height: 10px; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; margin-top: 10px; }
+.progress > span { display: block; height: 100%; width: 0%; background: linear-gradient(to right, var(--cyan), var(--orange)); box-shadow: var(--glow); transition: width 120ms linear; }
+.status { font-family: var(--font-title); font-size: 14px; letter-spacing: 0.08em; color: var(--white-60); margin-top: 10px; min-height: 1.2em; }
+.status.err { color: var(--alert); }
+.status.ok { color: var(--ok); }
+
+.legend { display: flex; gap: 18px; font-size: 13px; color: var(--white-60); margin-bottom: 8px; }
+.legend .k { display: inline-flex; align-items: center; gap: 6px; }
+.legend .sw { width: 16px; height: 3px; display: inline-block; }
+.disclaimer { color: var(--white-30); font-size: 13px; font-style: italic; margin-top: 8px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>PULSE<span class="slash">//</span>GRID</h1>
+  <span class="sub">Reference Builder — offline (R10.3, §3.4/§3.5)</span>
+</div>
+<p class="lead">
+  Open the routine's <b>video file from your computer</b>. It plays locally in this browser and is
+  <b>never uploaded</b> anywhere. The tool runs pose detection across the whole clip and produces a small
+  <b>reference.json</b> (per-0.5&nbsp;s upper/lower/overall intensity). Drop that file into
+  <b>references/</b> and commit only the JSON — never the video.
+</p>
+
+<div class="panel">
+  <div class="panel-title">1 · Routine &amp; video</div>
+  <div class="row" style="margin-bottom:16px">
+    <label class="field">Routine ID
+      <input type="text" id="routineId" value="test90" autocomplete="off" />
+    </label>
+    <label class="field">Trim start (s)
+      <input type="number" id="startSec" value="0" min="0" step="0.1" />
+    </label>
+    <label class="field">Trim end (s, blank = full)
+      <input type="number" id="endSec" value="" min="0" step="0.1" />
+    </label>
+    <label class="field">Sample FPS
+      <input type="number" id="fps" value="15" min="1" max="30" step="1" />
+    </label>
+  </div>
+  <div class="drop" id="drop">
+    <div>Drop an <b>MP4 / WebM / MOV</b> here, or <b>click to choose</b> a local video file.</div>
+    <div style="margin-top:6px;font-size:13px">Nothing leaves your computer.</div>
+  </div>
+  <input type="file" id="file" accept="video/*" />
+</div>
+
+<div class="panel hidden" id="analyzePanel">
+  <div class="panel-title">2 · Analyse</div>
+  <div class="previewwrap">
+    <div>
+      <video id="video" muted playsinline preload="auto"></video>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="analyzeBtn" disabled>Analyse Video</button>
+        <button class="btn" id="cancelBtn" disabled>Cancel</button>
+      </div>
+      <div class="progress"><span id="bar"></span></div>
+      <div class="status" id="status">Load MediaPipe, then analyse.</div>
+    </div>
+    <div>
+      <div class="legend">
+        <span class="k"><span class="sw" style="background:var(--cyan)"></span>Upper</span>
+        <span class="k"><span class="sw" style="background:var(--orange)"></span>Lower</span>
+        <span class="k"><span class="sw" style="background:#fff"></span>Overall</span>
+      </div>
+      <canvas class="chart" id="chart" width="900" height="260"></canvas>
+      <div class="disclaimer">Preview shows 0.5&nbsp;s-binned intensity across the clip. Ankles are excluded from the lower-body score so the instructor is scored identically to users framed head-to-knee.</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel hidden" id="exportPanel">
+  <div class="panel-title">3 · Export</div>
+  <div class="row">
+    <button class="btn primary" id="downloadBtn" disabled>Download reference.json</button>
+    <span class="status ok" id="exportStatus"></span>
+  </div>
+  <div class="disclaimer" id="exportMeta"></div>
+</div>
+
+<!-- Classic scripts first: config + shared intensity engine. -->
+<script src="config.js"></script>
+<script src="pose-intensity.js"></script>
+
+<!-- MediaPipe is an ES module; the app logic lives in this module too.
+     The import specifier must be a static string, so the version is pinned here
+     to match config.js (@mediapipe/tasks-vision@0.10.35). -->
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs';
+
+(function () {
+  'use strict';
+  var CFG = window.CONFIG;
+  var PCFG = CFG.pose;
+  var PI = window.PoseIntensity;
+
+  var el = {
+    drop: document.getElementById('drop'),
+    file: document.getElementById('file'),
+    video: document.getElementById('video'),
+    routineId: document.getElementById('routineId'),
+    startSec: document.getElementById('startSec'),
+    endSec: document.getElementById('endSec'),
+    fps: document.getElementById('fps'),
+    analyzePanel: document.getElementById('analyzePanel'),
+    analyzeBtn: document.getElementById('analyzeBtn'),
+    cancelBtn: document.getElementById('cancelBtn'),
+    bar: document.getElementById('bar'),
+    status: document.getElementById('status'),
+    chart: document.getElementById('chart'),
+    exportPanel: document.getElementById('exportPanel'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    exportStatus: document.getElementById('exportStatus'),
+    exportMeta: document.getElementById('exportMeta')
+  };
+
+  var landmarker = null;
+  var objectUrl = null;
+  var cancelled = false;
+  var lastResult = null;      // { routineId, durationSec, binSec, upper, lower, overall }
+
+  function setStatus(msg, kind) {
+    el.status.textContent = msg || '';
+    el.status.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  // ---- MediaPipe loader ------------------------------------------------
+  function loadLandmarker() {
+    if (landmarker) return Promise.resolve(landmarker);
+    setStatus('Loading MediaPipe Pose Landmarker…');
+    return FilesetResolver.forVisionTasks(CFG.cdn.mediapipeWasm).then(function (fileset) {
+      return PoseLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: PCFG.modelLite, delegate: PCFG.delegate || 'GPU' },
+        runningMode: 'VIDEO',
+        numPoses: PCFG.numPoses || 1,
+        minPoseDetectionConfidence: PCFG.minPoseDetectionConfidence || 0.5,
+        minPosePresenceConfidence: PCFG.minPosePresenceConfidence || 0.5,
+        minTrackingConfidence: PCFG.minTrackingConfidence || 0.5
+      });
+    }).then(function (lm) {
+      landmarker = lm;
+      return lm;
+    }).catch(function (e) {
+      // GPU delegate can fail on some machines; retry once on CPU.
+      if ((PCFG.delegate || 'GPU') === 'GPU') {
+        setStatus('GPU delegate failed — retrying on CPU…', null);
+        return FilesetResolver.forVisionTasks(CFG.cdn.mediapipeWasm).then(function (fileset) {
+          return PoseLandmarker.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath: PCFG.modelLite, delegate: 'CPU' },
+            runningMode: 'VIDEO', numPoses: PCFG.numPoses || 1
+          });
+        }).then(function (lm) { landmarker = lm; return lm; });
+      }
+      throw e;
+    });
+  }
+
+  // ---- File handling ---------------------------------------------------
+  function pick() { el.file.value = ''; el.file.click(); }
+  el.drop.addEventListener('click', pick);
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    el.drop.addEventListener(ev, function (e) { e.preventDefault(); el.drop.classList.add('dragover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    el.drop.addEventListener(ev, function (e) { e.preventDefault(); el.drop.classList.remove('dragover'); });
+  });
+  el.drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+  el.file.addEventListener('change', function () {
+    if (el.file.files && el.file.files[0]) loadFile(el.file.files[0]);
+  });
+
+  function loadFile(file) {
+    if (!/^video\//.test(file.type) && !/\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
+      setStatus('That does not look like a video file.', 'err');
+      return;
+    }
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(file);          // local only; never uploaded
+    el.video.src = objectUrl;
+    el.analyzePanel.classList.remove('hidden');
+    el.exportPanel.classList.add('hidden');
+    setStatus('Loading video metadata…');
+    el.video.addEventListener('loadedmetadata', function onMeta() {
+      el.video.removeEventListener('loadedmetadata', onMeta);
+      setStatus('Video ready: ' + fmt(el.video.duration) + ' · ' + el.video.videoWidth + '×' + el.video.videoHeight + '. Press Analyse.');
+      el.analyzeBtn.disabled = false;
+    }, { once: true });
+  }
+
+  function fmt(s) {
+    if (!isFinite(s)) return '—';
+    var m = Math.floor(s / 60), sec = Math.round(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // ---- Seek helper (frame-stepped analysis) ----------------------------
+  function seekTo(t) {
+    return new Promise(function (resolve) {
+      function onSeeked() { el.video.removeEventListener('seeked', onSeeked); resolve(); }
+      el.video.addEventListener('seeked', onSeeked);
+      // Clamp slightly inside duration to avoid a seek that never fires.
+      el.video.currentTime = Math.min(t, Math.max(0, el.video.duration - 0.001));
+    });
+  }
+
+  // ---- Analyse ---------------------------------------------------------
+  el.analyzeBtn.addEventListener('click', runAnalysis);
+  el.cancelBtn.addEventListener('click', function () { cancelled = true; });
+
+  function runAnalysis() {
+    cancelled = false;
+    el.analyzeBtn.disabled = true;
+    el.cancelBtn.disabled = false;
+    el.downloadBtn.disabled = true;
+    lastResult = null;
+
+    var fps = clampNum(parseFloat(el.fps.value), 1, 30, PCFG.referenceFps || 15);
+    var startSec = Math.max(0, parseFloat(el.startSec.value) || 0);
+    var endInput = parseFloat(el.endSec.value);
+    var dur = el.video.duration;
+    var endSec = (!isNaN(endInput) && endInput > startSec) ? Math.min(endInput, dur) : dur;
+    var step = 1 / fps;
+
+    var tracker = new PI.IntensityTracker();
+    var binner = new PI.Binner(PI.defaults.binSeconds);
+
+    loadLandmarker().then(function () {
+      setStatus('Analysing… 0%');
+      var t = startSec;
+
+      function stepFrame() {
+        if (cancelled) { finishCancelled(); return; }
+        if (t >= endSec) { finish(startSec, endSec, binner); return; }
+        seekTo(t).then(function () {
+          var tsMs = Math.round(t * 1000);
+          var res;
+          try {
+            res = landmarker.detectForVideo(el.video, tsMs);
+          } catch (e) { res = null; }
+          var lm = (res && res.landmarks && res.landmarks[0]) ? res.landmarks[0] : null;
+          // Analysis time axis is relative to the trimmed start.
+          var relT = t - startSec;
+          var frame = tracker.update(lm, relT);
+          binner.add(relT, frame);
+
+          var pct = Math.min(100, Math.round(((t - startSec) / (endSec - startSec)) * 100));
+          el.bar.style.width = pct + '%';
+          setStatus('Analysing… ' + pct + '%');
+
+          t += step;
+          // Yield to the event loop so the UI updates and we don't block.
+          setTimeout(stepFrame, 0);
+        });
+      }
+      stepFrame();
+    }).catch(function (e) {
+      setStatus('Failed to load MediaPipe: ' + (e && e.message ? e.message : e), 'err');
+      el.analyzeBtn.disabled = false;
+      el.cancelBtn.disabled = true;
+    });
+  }
+
+  function clampNum(v, lo, hi, dflt) {
+    if (isNaN(v)) return dflt;
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function finishCancelled() {
+    setStatus('Cancelled.', 'err');
+    el.analyzeBtn.disabled = false;
+    el.cancelBtn.disabled = true;
+  }
+
+  function finish(startSec, endSec, binner) {
+    var durationSec = +(endSec - startSec).toFixed(3);
+    var binCount = Math.ceil(durationSec / PI.defaults.binSeconds);
+    var series = binner.series(binCount);
+
+    lastResult = {
+      routineId: (el.routineId.value || 'routine').trim(),
+      durationSec: durationSec,
+      binSec: PI.defaults.binSeconds,
+      upper: series.upper,
+      lower: series.lower,
+      overall: series.overall
+    };
+
+    el.bar.style.width = '100%';
+    var valid = series.overall.filter(function (v) { return v != null; }).length;
+    setStatus('Done — ' + series.overall.length + ' bins (' + valid + ' with pose). ', 'ok');
+    el.cancelBtn.disabled = true;
+    el.analyzeBtn.disabled = false;
+    el.downloadBtn.disabled = false;
+    el.exportPanel.classList.remove('hidden');
+    el.exportMeta.textContent = 'routineId "' + lastResult.routineId + '" · ' + durationSec + 's · binSec ' +
+      lastResult.binSec + ' · ' + series.overall.length + ' bins';
+    drawChart(series);
+  }
+
+  // ---- Chart (hand-rolled, zero chart deps) ----------------------------
+  function drawChart(series) {
+    var c = el.chart, ctx = c.getContext('2d');
+    var W = c.width, H = c.height, pad = 24;
+    ctx.clearRect(0, 0, W, H);
+
+    // Baseline only (no gridlines, §3.14 charts).
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, H - pad); ctx.lineTo(W - pad, H - pad); ctx.stroke();
+
+    var n = series.overall.length;
+    if (n < 2) return;
+    function x(i) { return pad + (W - 2 * pad) * (i / (n - 1)); }
+    function y(v) { return (H - pad) - (H - 2 * pad) * (Math.max(0, Math.min(100, v)) / 100); }
+
+    function line(arr, color, dashed, width) {
+      ctx.save();
+      ctx.strokeStyle = color; ctx.lineWidth = width || 2;
+      if (dashed) ctx.setLineDash([6, 5]); else { ctx.shadowColor = color; ctx.shadowBlur = 6; }
+      ctx.beginPath();
+      var started = false;
+      for (var i = 0; i < n; i++) {
+        var v = arr[i];
+        if (v == null) { started = false; continue; }     // gap on missing bins
+        var px = x(i), py = y(v);
+        if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    line(series.upper, '#00E5FF', false, 2);
+    line(series.lower, '#FF8A00', false, 2);
+    line(series.overall, '#FFFFFF', false, 3);
+  }
+
+  // ---- Export ----------------------------------------------------------
+  el.downloadBtn.addEventListener('click', function () {
+    if (!lastResult) return;
+    var blob = new Blob([JSON.stringify(lastResult)], { type: 'application/json' });
+    var a = document.createElement('a');
+    var url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = (lastResult.routineId || 'reference') + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    el.exportStatus.textContent = 'Saved ' + a.download + ' — move it to references/ as ' + a.download;
+  });
+
+})();
+</script>
+</body>
+</html>

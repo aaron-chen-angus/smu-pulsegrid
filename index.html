@@ -3103,26 +3103,43 @@ body[data-camtest="true"] #camtest {
     // Allow the controller to cancel (e.g. leaving the screen) before we return.
     run._cancel = function () { cancelled = true; };
 
+    // The expression model is optional: if it fails to load we still run the
+    // sampling loop (bars stay at 0) and finish, so PROCEED is never blocked.
     return P().face.loadExpression()
+      .catch(function () { return null; })      // tolerate model-load failure
       .then(function () {
         if (!video) video = P().camera.getVideo();
         startAt = performance.now();
         return new Promise(function (resolve) {
+          var settled = false;
+          function finish() {
+            if (settled) return;
+            settled = true;
+            if (safety) clearTimeout(safety);
+            resolve(finalize());
+          }
+          // Absolute safety net: the scan can NEVER hang. Resolve after the
+          // hard cap even if every detection throws or the model is missing.
+          var safety = setTimeout(finish, SCAN_MS * 2 + 1500);
+
           function tick() {
-            if (cancelled) { resolve(finalize()); return; }
+            if (settled) return;
+            if (cancelled) { finish(); return; }
             var elapsed = performance.now() - startAt;
+            // detectExpr never throws and never rejects (see below).
             detectExpr(video).then(function (exp) {
+              if (settled) return;
               if (exp) {
                 frames.push(exp);
                 var live = P().emotion.compute(frames);
                 renderLive(slot, live);
                 progress(frames.length);
               }
-              // Stop at 5s if we have enough valid frames; otherwise keep sampling
-              // a little longer until MIN_VALID is reached (R3.2).
+              // Finish at 5 s once we have enough valid frames; keep sampling a
+              // little longer to reach MIN_VALID, with a 10 s hard cap (R3.2).
               var done = (elapsed >= SCAN_MS && frames.length >= MIN_VALID) ||
-                         (elapsed >= SCAN_MS * 2);   // hard cap at 10s
-              if (done) { resolve(finalize()); return; }
+                         (elapsed >= SCAN_MS * 2);
+              if (done) { finish(); return; }
               setTimeout(tick, SAMPLE_INTERVAL);
             });
           }
@@ -3146,13 +3163,18 @@ body[data-camtest="true"] #camtest {
   }
 
   // Detect a single face with expressions; return the 7-prob map or null if the
-  // detection confidence is below MIN_CONF (R3.2).
+  // detection confidence is below MIN_CONF (R3.2). Wrapped so it can NEVER throw
+  // synchronously or reject — a throw here previously killed the sampling loop.
   function detectExpr(video) {
-    if (!video || !P().face.isAvailable()) return Promise.resolve(null);
-    var faceapi = window.faceapi;
-    return faceapi.detectSingleFace(video, P().face.tinyOpts())
-      .withFaceExpressions()
-      .then(function (res) {
+    try {
+      if (!video || !P().face.isAvailable() || !window.faceapi) return Promise.resolve(null);
+      var faceapi = window.faceapi;
+      // The expression net must be present; if not, skip gracefully.
+      if (!faceapi.nets || !faceapi.nets.faceExpressionNet || !faceapi.nets.faceExpressionNet.isLoaded) {
+        return Promise.resolve(null);
+      }
+      var p = faceapi.detectSingleFace(video, P().face.tinyOpts()).withFaceExpressions();
+      return Promise.resolve(p).then(function (res) {
         if (!res || !res.detection || res.detection.score < MIN_CONF) return null;
         var ex = res.expressions || {};
         return {
@@ -3160,8 +3182,10 @@ body[data-camtest="true"] #camtest {
           angry: ex.angry || 0, fearful: ex.fearful || 0,
           disgusted: ex.disgusted || 0, surprised: ex.surprised || 0
         };
-      })
-      .catch(function () { return null; });
+      }).catch(function () { return null; });
+    } catch (e) {
+      return Promise.resolve(null);   // never throw into the loop
+    }
   }
 
   function cancel() { if (run._cancel) run._cancel(); }

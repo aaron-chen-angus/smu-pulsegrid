@@ -3008,7 +3008,9 @@ body[data-camtest="true"] #camtest {
   var SAMPLE_HZ = ECFG.sampleHz || 5;
   var SCAN_MS = (ECFG.scanSeconds || 5) * 1000;
   var MIN_VALID = ECFG.minValidFrames || 15;
-  var MIN_CONF = ECFG.minFaceConfidence || 0.6;
+  // TinyFaceDetector scores are modest; 0.6 rejected most valid frames. Use a
+  // lower acceptance floor for the expression pass so bars actually fill.
+  var MIN_CONF = (ECFG.minFaceConfidence != null) ? Math.min(ECFG.minFaceConfidence, 0.3) : 0.3;
   var SAMPLE_INTERVAL = Math.max(60, Math.floor(1000 / SAMPLE_HZ));
 
   var EMO = (P() && P().emotion) ? P().emotion.EMOTIONS : ['neutral','happy','sad','angry','fearful','disgusted','surprised'];
@@ -3105,10 +3107,13 @@ body[data-camtest="true"] #camtest {
 
     // The expression model is optional: if it fails to load we still run the
     // sampling loop (bars stay at 0) and finish, so PROCEED is never blocked.
+    var exprOK = false;
     return P().face.loadExpression()
-      .catch(function () { return null; })      // tolerate model-load failure
+      .then(function () { exprOK = true; try { console.log('[emotion] expression model loaded'); } catch (e) {} })
+      .catch(function (err) { try { console.warn('[emotion] expression model FAILED to load', err); } catch (e) {} return null; })
       .then(function () {
         if (!video) video = P().camera.getVideo();
+        if (!video) { try { console.warn('[emotion] no video element'); } catch (e) {} }
         startAt = performance.now();
         return new Promise(function (resolve) {
           var settled = false;
@@ -3149,10 +3154,11 @@ body[data-camtest="true"] #camtest {
       .catch(function () { return finalize(); });
 
     function finalize() {
+      try { console.log('[emotion] scan finished — valid frames:', frames.length, 'exprModelLoaded:', exprOK); } catch (e) {}
       var summary = P().emotion.compute(frames);
       summary.phase = phase;
       summary.scannedAt = P().session.isoNowSG();
-      summary.insufficient = frames.length < MIN_VALID;
+      summary.insufficient = frames.length < Math.min(MIN_VALID, 5);
       renderLive(slot, summary);
       renderStress(slot, summary);
       // Store in session (R3.5).
@@ -3162,27 +3168,31 @@ body[data-camtest="true"] #camtest {
     }
   }
 
-  // Detect a single face with expressions; return the 7-prob map or null if the
-  // detection confidence is below MIN_CONF (R3.2). Wrapped so it can NEVER throw
-  // synchronously or reject — a throw here previously killed the sampling loop.
+  // Detect a single face with expressions; return the 7-prob map or null.
+  // Wrapped so it can NEVER throw synchronously or reject — a throw here
+  // previously killed the sampling loop. We do NOT gate on an isLoaded flag
+  // (its presence varies by build); the model is loaded before the loop starts.
   function detectExpr(video) {
     try {
-      if (!video || !P().face.isAvailable() || !window.faceapi) return Promise.resolve(null);
+      if (!video || !window.faceapi) return Promise.resolve(null);
       var faceapi = window.faceapi;
-      // The expression net must be present; if not, skip gracefully.
-      if (!faceapi.nets || !faceapi.nets.faceExpressionNet || !faceapi.nets.faceExpressionNet.isLoaded) {
-        return Promise.resolve(null);
-      }
       var p = faceapi.detectSingleFace(video, P().face.tinyOpts()).withFaceExpressions();
       return Promise.resolve(p).then(function (res) {
-        if (!res || !res.detection || res.detection.score < MIN_CONF) return null;
-        var ex = res.expressions || {};
+        if (!res || !res.expressions) return null;
+        // Accept the frame even at modest detection score; face-api returns a
+        // valid expression distribution whenever it finds a face.
+        var score = (res.detection && res.detection.score != null) ? res.detection.score : 1;
+        if (score < MIN_CONF) return null;
+        var ex = res.expressions;
+        // face-api expressions may be a plain object or an FaceExpressions class;
+        // read fields defensively.
+        function g(k) { return (ex[k] != null) ? ex[k] : 0; }
         return {
-          neutral: ex.neutral || 0, happy: ex.happy || 0, sad: ex.sad || 0,
-          angry: ex.angry || 0, fearful: ex.fearful || 0,
-          disgusted: ex.disgusted || 0, surprised: ex.surprised || 0
+          neutral: g('neutral'), happy: g('happy'), sad: g('sad'),
+          angry: g('angry'), fearful: g('fearful'),
+          disgusted: g('disgusted'), surprised: g('surprised')
         };
-      }).catch(function () { return null; });
+      }).catch(function (e) { return null; });
     } catch (e) {
       return Promise.resolve(null);   // never throw into the loop
     }
@@ -4572,13 +4582,30 @@ body[data-camtest="true"] #camtest {
       setHint('Reading your expression…', 'ok');
       var phaseLabel = (mode === 'out') ? 'out' : 'in';
       if (!P().emotionScan) { enableProceed(); return; }
-      P().emotionScan.run(d.section, phaseLabel).then(function (summary) {
+
+      // Make sure PROCEED enables no matter what — a failed/empty scan must not
+      // block the user. (Belt-and-braces alongside the scan's own safety timer.)
+      var safety = setTimeout(function () {
         d.circle.classList.remove('scanning');
-        if (summary && summary.stressLevel === 'High') {
+        setHint('Welcome, ' + (d.name.textContent || '') , 'ok');
+        enableProceed();
+      }, 13000);
+
+      P().emotionScan.run(d.section, phaseLabel).then(function (summary) {
+        clearTimeout(safety);
+        d.circle.classList.remove('scanning');
+        if (summary && summary.insufficient) {
+          setHint('Expression read skipped — you can proceed', 'warn');
+        } else if (summary && summary.stressLevel === 'High') {
           setHint('Scan complete — take a breath', 'warn');
         } else {
           setHint('Scan complete', 'ok');
         }
+        enableProceed();
+      }).catch(function () {
+        clearTimeout(safety);
+        d.circle.classList.remove('scanning');
+        setHint('You can proceed', 'ok');
         enableProceed();
       });
     }

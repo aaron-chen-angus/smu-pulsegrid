@@ -979,23 +979,12 @@ body[data-voice="off"] .voice-hint { display: none; }
 .rdy-stage { position: relative; flex: 1 1 auto; min-height: 0; }
 .rdy-stage .cam { position: absolute; inset: 0; }
 
-/* Head-to-knee silhouette guide: a rounded capsule the user should fill.
-   Turns blue (R12.5) when framing is good. */
-.rdy-silhouette {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  height: 86%; aspect-ratio: 10 / 16;
+/* Live pose overlay on the Ready screen — the user's own skeleton drawn as a
+   glowing body shape (no fixed outline to fit into). Colour reflects framing:
+   orange while calibrating, blue (R12.5) once shoulders+hips are detected. */
+.rdy-pose {
+  position: absolute; inset: 0; width: 100%; height: 100%;
   z-index: 3; pointer-events: none;
-}
-.rdy-silhouette svg { width: 100%; height: 100%; display: block; }
-.rdy-silhouette .sil {
-  fill: rgba(255,138,0,0.06); stroke: var(--orange); stroke-width: 2;
-  filter: drop-shadow(0 0 8px rgba(255,138,0,0.5));
-  transition: stroke 300ms, fill 300ms, filter 300ms;
-}
-.rdy-silhouette.good .sil {
-  fill: rgba(0,229,255,0.08); stroke: var(--ok);
-  filter: drop-shadow(0 0 10px rgba(61,255,176,0.6));
 }
 
 /* Distance meter: Too close / Good / Too far. */
@@ -1137,6 +1126,9 @@ body[data-voice="off"] .voice-hint { display: none; }
 .ex-overlay.show { display: flex; }
 .ex-overlay h3 { font-family: var(--font-title); font-weight: 800; font-size: var(--fs-2); color: var(--orange); margin: 0; letter-spacing: 0.06em; }
 .ex-overlay p { color: #d9e6f0; font-size: var(--fs-5); margin: 0; }
+/* Lighter non-blocking nudge (out-of-frame): dimmer, auto-clears, no Resume. */
+.ex-overlay.nudge { background: rgba(2,4,10,0.35); }
+.ex-overlay.nudge h3 { font-size: var(--fs-3); }
 
 /* =========================================================================
    Session Complete screen (T9 / R6, §3.3)
@@ -1491,7 +1483,7 @@ body[data-camtest="true"] #camtest {
                 <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M8 7l1.5-2h5L16 7"/></svg>
                   Device at chest height (1.0–1.2 m), landscape.</li>
                 <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                  Step back to about 1.5 m until head-to-knee fills the guide.</li>
+                  Step back to about 1.5 m until your shoulders and hips are in view.</li>
                 <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h16M12 4v16"/></svg>
                   On iPad, turn off Center Stage (it auto-zooms).</li>
               </ul>
@@ -1505,14 +1497,13 @@ body[data-camtest="true"] #camtest {
           <!-- Right 65%: webcam + silhouette + distance meter + countdown -->
           <div class="rdy-camwrap">
             <div class="panel"><span class="notch-bl"></span><span class="notch-br"></span>
-              <div class="panel-title">Framing — Head To Knee</div>
+              <div class="panel-title">Framing — Body Detection</div>
               <div class="rdy-stage">
                 <div class="cam" data-role="cam"></div>
-                <div class="rdy-silhouette" data-role="silhouette">
-                  <svg viewBox="0 0 100 160" preserveAspectRatio="xMidYMid meet">
-                    <path class="sil" d="M50 6 a14 14 0 1 1 -0.1 0 Z M36 34 q14 -8 28 0 l6 44 q-4 6 -12 4 l-3 -30 -1 60 -14 0 -1 -60 -3 30 q-8 2 -12 -4 Z"/>
-                  </svg>
-                </div>
+                <!-- Live pose skeleton drawn as a glowing body shape that
+                     follows the user; turns blue when shoulders+hips (knees as a
+                     bonus) are detected. No fixed outline to fit into. -->
+                <canvas class="rdy-pose" data-role="pose"></canvas>
                 <div class="rdy-meter">
                   <div class="meter-track"><span class="meter-mark" data-role="mark" style="left:0%"></span></div>
                   <div class="meter-label" data-role="meterlabel">Step into frame</div>
@@ -3169,30 +3160,41 @@ body[data-camtest="true"] #camtest {
   }
 
   // Detect a single face with expressions; return the 7-prob map or null.
-  // Wrapped so it can NEVER throw synchronously or reject — a throw here
-  // previously killed the sampling loop. We do NOT gate on an isLoaded flag
-  // (its presence varies by build); the model is loaded before the loop starts.
+  // Uses the full landmarks+expressions chain (the reliable path in face-api),
+  // falling back to the direct chain. Never throws or rejects into the loop.
+  var exprDiagLogged = false;
   function detectExpr(video) {
     try {
       if (!video || !window.faceapi) return Promise.resolve(null);
       var faceapi = window.faceapi;
-      var p = faceapi.detectSingleFace(video, P().face.tinyOpts()).withFaceExpressions();
+      // Full chain: detect -> landmarks -> expressions (what the library expects).
+      var p = faceapi.detectSingleFace(video, P().face.tinyOpts())
+        .withFaceLandmarks()
+        .withFaceExpressions();
       return Promise.resolve(p).then(function (res) {
-        if (!res || !res.expressions) return null;
-        // Accept the frame even at modest detection score; face-api returns a
-        // valid expression distribution whenever it finds a face.
+        if (!res) {
+          if (!exprDiagLogged) { exprDiagLogged = true; try { console.warn('[emotion] no face detected in expression pass'); } catch (e) {} }
+          return null;
+        }
+        var ex = res.expressions;
+        if (!ex) {
+          if (!exprDiagLogged) { exprDiagLogged = true; try { console.warn('[emotion] detection had no .expressions field', res); } catch (e) {} }
+          return null;
+        }
         var score = (res.detection && res.detection.score != null) ? res.detection.score : 1;
         if (score < MIN_CONF) return null;
-        var ex = res.expressions;
-        // face-api expressions may be a plain object or an FaceExpressions class;
-        // read fields defensively.
+        // Expressions may be a plain object OR a class with .asSortedArray();
+        // read the 7 known fields defensively.
         function g(k) { return (ex[k] != null) ? ex[k] : 0; }
         return {
           neutral: g('neutral'), happy: g('happy'), sad: g('sad'),
           angry: g('angry'), fearful: g('fearful'),
           disgusted: g('disgusted'), surprised: g('surprised')
         };
-      }).catch(function (e) { return null; });
+      }).catch(function (e) {
+        if (!exprDiagLogged) { exprDiagLogged = true; try { console.warn('[emotion] expression detect error', e); } catch (ignore) {} }
+        return null;
+      });
     } catch (e) {
       return Promise.resolve(null);   // never throw into the loop
     }
@@ -3721,9 +3723,9 @@ body[data-camtest="true"] #camtest {
     if (!available) return null;
     var r = new SR();
     r.continuous = true;
-    r.interimResults = false;
+    r.interimResults = true;    // react to partial results -> much faster/looser
     r.lang = LANG;
-    r.maxAlternatives = 3;
+    r.maxAlternatives = 5;
     r.onresult = onResult;
     r.onerror = onError;
     r.onend = onEnd;
@@ -3752,24 +3754,27 @@ body[data-camtest="true"] #camtest {
   function onEnd() {
     active = false;
     if (running) {
-      // Auto-restart with a short backoff (§3.10).
+      // Auto-restart quickly so there's minimal deaf time between sessions.
       restartTimer = setTimeout(function () {
         if (running && !active) { try { rec.start(); active = true; } catch (e) {} }
-      }, 350);
+      }, 120);
     }
   }
 
   function onError(e) {
     active = false;
     var err = e && e.error;
-    // Permission denied / unsupported language -> stop trying (graceful).
+    // Permission denied -> stop trying (graceful).
     if (err === 'not-allowed' || err === 'service-not-allowed') { running = false; return; }
     if (err === 'language-not-supported' && !usedFallbackLang) {
       usedFallbackLang = true;
       if (rec) rec.lang = FALLBACK;
     }
-    // onend will fire and handle the restart.
+    // 'no-speech'/'aborted'/'network' -> let onend restart us.
   }
+
+  // Debounce so the same phrase from streaming interim results fires once.
+  var lastFire = { phrase: null, t: 0 };
 
   function onResult(ev) {
     if (muted) return;
@@ -3777,21 +3782,28 @@ body[data-camtest="true"] #camtest {
     var list = commands[state];
     if (!list || !list.length) return;
 
-    // Gather all alternatives across final results, lower-cased.
+    // Gather ALL results this event (interim + final) and every alternative,
+    // lower-cased, so a command fires as soon as the word is heard.
     var transcripts = [];
-    for (var i = ev.resultIndex; i < ev.results.length; i++) {
+    for (var i = 0; i < ev.results.length; i++) {
       var r = ev.results[i];
-      if (!r.isFinal) continue;
-      for (var a = 0; a < r.length; a++) transcripts.push((r[a].transcript || '').toLowerCase().trim());
+      for (var a = 0; a < r.length; a++) {
+        var t = (r[a].transcript || '').toLowerCase().trim();
+        if (t) transcripts.push(t);
+      }
     }
     if (!transcripts.length) return;
 
-    // First command whose phrase appears in any transcript wins.
     for (var c = 0; c < list.length; c++) {
       var cmd = list[c];
       for (var p = 0; p < cmd.phrases.length; p++) {
         var phrase = cmd.phrases[p];
-        if (transcripts.some(function (t) { return t.indexOf(phrase) !== -1; })) {
+        var hit = transcripts.some(function (t) { return t.indexOf(phrase) !== -1; });
+        if (hit) {
+          var now = Date.now();
+          // Ignore a repeat of the same phrase within 1.2 s (interim streaming).
+          if (lastFire.phrase === phrase && (now - lastFire.t) < 1200) return;
+          lastFire = { phrase: phrase, t: now };
           try { cmd.action(phrase); } catch (e) {}
           return;   // one command per utterance
         }
@@ -4850,7 +4862,7 @@ body[data-camtest="true"] #camtest {
     dom.duration = section.querySelector('[data-role="duration"]');
     dom.metchip = section.querySelector('[data-role="metchip"]');
     dom.start = section.querySelector('[data-role="start"]');
-    dom.silhouette = section.querySelector('[data-role="silhouette"]');
+    dom.pose = section.querySelector('[data-role="pose"]');
     dom.mark = section.querySelector('[data-role="mark"]');
     dom.meterLabel = section.querySelector('[data-role="meterlabel"]');
     dom.countdown = section.querySelector('[data-role="countdown"]');
@@ -4892,8 +4904,8 @@ body[data-camtest="true"] #camtest {
     dom.start.disabled = true;
 
     P().camera.start(dom.cam, { mirror: true, showBadge: false, showTip: 'auto' })
-      .then(function (r) { video = r.video; return P().pose.load(); })
-      .then(function () { loop(); })
+      .then(function (r) { video = r.video; sizePoseCanvas(); return P().pose.load(); })
+      .then(function () { sizePoseCanvas(); loop(); })
       .catch(function () { setMeter(0, 'Camera or pose model unavailable', 'alert'); });
   }
 
@@ -4903,34 +4915,36 @@ body[data-camtest="true"] #camtest {
     var res = P().pose.detect(video, ts);
     var lm = P().pose.firstPose(res);
     evaluate(lm);
+    drawPose(lm);
     raf = requestAnimationFrame(loop);
   }
 
   function visible(lm, i) { return lm[i] && (lm[i].visibility == null || lm[i].visibility >= VIS); }
 
   function evaluate(lm) {
-    if (!lm) { setMeter(0, 'Step into frame', ''); setGood(false); return; }
+    if (!lm) { setMeter(0, 'Step into frame — detecting you…', ''); setGood(false); return; }
 
-    // Head-to-knee present (R12.3): nose, both shoulders, both hips, both knees.
-    var htk = visible(lm, NOSE) && visible(lm, SH_L) && visible(lm, SH_R) &&
-              visible(lm, HIP_L) && visible(lm, HIP_R) &&
-              visible(lm, KNEE_L) && visible(lm, KNEE_R);
+    // Core markers for movement tracking: both shoulders AND both hips (R12.3).
+    // Knees are a bonus — detected when visible but NOT required. This is all CV
+    // needs to score upper + lower movement.
+    var core = visible(lm, SH_L) && visible(lm, SH_R) && visible(lm, HIP_L) && visible(lm, HIP_R);
+    var knees = visible(lm, KNEE_L) && visible(lm, KNEE_R);
 
-    // Distance from shoulder width as a fraction of frame width (R12.4).
-    var shoulderW = Math.abs(lm[SH_L].x - lm[SH_R].x);   // normalised 0..1
-    var pct = shoulderW;
-    // Meter mark position: map 0.08..0.28 across the track.
-    var markPct = Math.max(0, Math.min(1, (pct - 0.08) / (0.28 - 0.08))) * 100;
+    // Distance from shoulder width as a fraction of frame width (R12.4). Wider
+    // acceptable band so a normal standing distance passes easily.
+    var pct = Math.abs(lm[SH_L].x - lm[SH_R].x);   // normalised 0..1
+    var markPct = Math.max(0, Math.min(1, (pct - 0.08) / (0.34 - 0.08))) * 100;
 
+    var tooClose = pct > 0.34;        // very close to the camera
     var label, cls;
-    if (pct > SHOULDER_MAX) { label = 'Too close — step back'; cls = 'warn'; }
-    else if (pct < SHOULDER_MIN) { label = 'Too far — step closer'; cls = 'alert'; }
-    else if (!htk) { label = 'Fit head to knees in the guide'; cls = 'warn'; }
-    else { label = 'Good — hold still'; cls = 'ok'; }
+    if (!core) { label = 'Step into frame'; cls = 'warn'; }
+    else if (tooClose) { label = 'A little too close — step back'; cls = 'warn'; }
+    else if (knees) { label = 'Great — full body detected'; cls = 'ok'; }
+    else { label = 'Detected — ready (knees optional)'; cls = 'ok'; }
 
     setMeter(markPct, label, cls);
-    var ok = htk && pct >= SHOULDER_MIN && pct <= SHOULDER_MAX;
-    setGood(ok);
+    // Ready as soon as the core markers are present and not jammed into the lens.
+    setGood(core && !tooClose);
   }
 
   function setMeter(markPct, label, cls) {
@@ -4938,10 +4952,69 @@ body[data-camtest="true"] #camtest {
     if (dom.meterLabel) { dom.meterLabel.textContent = label; dom.meterLabel.className = 'meter-label ' + (cls || ''); }
   }
   function setGood(ok) {
-    if (ok === framedOK) return;
     framedOK = ok;
-    dom.silhouette.classList.toggle('good', ok);
     if (!counting) dom.start.disabled = !ok;     // gate START (R4.3)
+  }
+
+  // ---- live pose drawing (replaces the fixed silhouette) ----------------
+  // MediaPipe bone pairs: upper body + torso + legs. Drawn thick with glow so
+  // the stick figure reads as a body shape following the user.
+  var RDY_BONES = [
+    [11,12],[11,13],[13,15],[12,14],[14,16],   // shoulders + arms
+    [11,23],[12,24],[23,24],                    // torso
+    [23,25],[25,27],[24,26],[26,28]             // legs (drawn if visible)
+  ];
+  var RDY_JOINTS = [11,12,13,14,15,16,23,24,25,26,27,28];
+
+  function sizePoseCanvas() {
+    if (!dom.pose) return;
+    var r = dom.cam.getBoundingClientRect();
+    dom.pose.width = Math.max(2, Math.round(r.width));
+    dom.pose.height = Math.max(2, Math.round(r.height));
+  }
+
+  function drawPose(lm) {
+    if (!dom.pose) return;
+    var ctx = dom.pose.getContext('2d');
+    if (dom.pose.width < 4) sizePoseCanvas();
+    ctx.clearRect(0, 0, dom.pose.width, dom.pose.height);
+    if (!lm) return;
+
+    // Map normalised landmarks to the displayed (object-fit:contain, mirrored)
+    // canvas space so the figure overlays the person.
+    var r = dom.cam.getBoundingClientRect();
+    var vw = video.videoWidth || 1, vh = video.videoHeight || 1;
+    var scale = Math.min(r.width / vw, r.height / vh);
+    var dw = vw * scale, dh = vh * scale;
+    var offX = (r.width - dw) / 2, offY = (r.height - dh) / 2;
+    function X(p) { return dom.pose.width - (offX + p.x * vw * scale); }  // mirror
+    function Y(p) { return offY + p.y * vh * scale; }
+
+    var color = framedOK ? '#3DFFB0' : '#FF8A00';   // blue-green when good, else orange
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 14;
+    RDY_BONES.forEach(function (b) {
+      var a = lm[b[0]], c = lm[b[1]];
+      if (!a || !c) return;
+      if ((a.visibility != null && a.visibility < 0.4) || (c.visibility != null && c.visibility < 0.4)) return;
+      ctx.beginPath(); ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(c), Y(c)); ctx.stroke();
+    });
+    // Joints as dots.
+    ctx.fillStyle = color;
+    RDY_JOINTS.forEach(function (i) {
+      var p = lm[i]; if (!p || (p.visibility != null && p.visibility < 0.4)) return;
+      ctx.beginPath(); ctx.arc(X(p), Y(p), 5, 0, Math.PI * 2); ctx.fill();
+    });
+    // Head circle from the nose/ears if present.
+    var nose = lm[0];
+    if (nose && (nose.visibility == null || nose.visibility >= 0.4)) {
+      var headR = 18 * (scale > 0 ? 1 : 1);
+      // Approx head radius from shoulder width.
+      if (lm[11] && lm[12]) headR = Math.abs(X(lm[11]) - X(lm[12])) * 0.45;
+      ctx.beginPath(); ctx.arc(X(nose), Y(nose) - headR * 0.3, Math.max(10, headR), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ---- countdown (R4.4) ------------------------------------------------
@@ -4993,6 +5066,7 @@ body[data-camtest="true"] #camtest {
     running = false;
     if (raf) cancelAnimationFrame(raf);
     P().camera.detach(dom.cam);
+    if (dom.pose && dom.pose.getContext) dom.pose.getContext('2d').clearRect(0, 0, dom.pose.width, dom.pose.height);
   }
 
   // ---- lifecycle -------------------------------------------------------
@@ -5020,6 +5094,13 @@ body[data-camtest="true"] #camtest {
     if (!window.PULSE || !window.PULSE.onEnter) { setTimeout(register, 30); return; }
     window.PULSE.onEnter('READY', onEnter);
     window.PULSE.onLeave('READY', onLeave);
+    // Expose for voice control: "start" begins the countdown even if the framing
+    // gate hasn't flipped yet (the user clearly intends to begin).
+    window.PULSE.readyStart = function () {
+      if (counting) return;
+      framedOK = true;          // allow a voice start regardless of framing state
+      startCountdown();
+    };
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', register);
@@ -5282,6 +5363,9 @@ body[data-camtest="true"] #camtest {
     if (now - state.lastDetect < 45) { state.raf = requestAnimationFrame(loop); return; }
     state.lastDetect = now;
 
+    // While manually paused: keep the RAF alive but don't detect or record.
+    if (state.paused) { state.raf = requestAnimationFrame(loop); return; }
+
     var tsMs = Math.round(now - state.tsBase);
     var res = P().pose.detect(state.video, tsMs);
     var lm = P().pose.firstPose(res);
@@ -5292,17 +5376,21 @@ body[data-camtest="true"] #camtest {
     state.elapsed = Math.max(0, cur - startSec);
     updateTimer();
 
-    // Out-of-frame handling (R5.8).
+    // Presence hint only — never pauses the workout (user request).
     handlePresence(lm, now);
 
     var speeds = {};
     var frame = { upper: null, lower: null, overall: null };
     if (lm) {
+      state.calibrated = true;      // body has been seen at least once
       // Per-joint display speed (normalised units/frame) for dot sizing + trail.
       computeJointSpeeds(lm, speeds, now);
       frame = state.tracker.update(lm, state.elapsed);
       drawSkeleton(lm, speeds);
     } else {
+      // No body detected. Once calibrated, record explicit ZERO movement for
+      // these bins (not gaps) so the session reflects "no movement" cleanly.
+      if (state.calibrated) frame = { upper: 0, lower: 0, overall: 0 };
       drawSkeleton(null, speeds);
     }
 
@@ -5379,41 +5467,53 @@ body[data-camtest="true"] #camtest {
   }
 
   // ---- presence / out-of-frame (R5.8) -----------------------------------
+  // Presence tracking only — the workout NEVER auto-pauses on out-of-frame.
+  // When no body is detected the intensity engine simply records zero movement
+  // for those bins (handled in the main loop), and the video keeps playing.
+  // We show a small non-blocking "step back into frame" nudge, which clears
+  // automatically the moment the body is seen again.
   function handlePresence(lm, now) {
     var present = !!lm;
     if (present) {
       state.lastSeen = now;
-      if (state.paused && state.pausedByFrame) resumeFromFrame();
-    } else {
-      if (!state.paused && (now - state.lastSeen) > OOF_S * 1000) {
-        pauseForFrame();
+      if (state.nudging) { state.nudging = false; hideNudge(); }
+    } else if (!state.paused) {
+      // Only a hint after a few seconds; does not stop tracking or the video.
+      if ((now - state.lastSeen) > OOF_S * 1000 && !state.nudging) {
+        state.nudging = true;
+        showNudge();
       }
     }
   }
-  function pauseForFrame() {
-    state.paused = true; state.pausedByFrame = true;
-    P().youtube.pause();
-    showOverlay('Out of frame', 'Step back into view to resume.');
+  function showNudge() {
+    if (!dom.overlay) return;
+    dom.overtitle.textContent = 'Step into frame';
+    dom.overmsg.textContent = 'Tracking continues — move back into view to score movement.';
+    dom.overlay.classList.add('nudge');     // lighter styling, no Resume button needed
+    dom.overlay.classList.add('show');
+    if (dom.resume) dom.resume.style.display = 'none';
   }
-  function resumeFromFrame() {
-    state.paused = false; state.pausedByFrame = false;
-    hideOverlay();
-    P().youtube.play();
+  function hideNudge() {
+    if (!dom.overlay) return;
+    dom.overlay.classList.remove('show');
+    dom.overlay.classList.remove('nudge');
   }
 
   function showOverlay(title, msg) {
     dom.overtitle.textContent = title; dom.overmsg.textContent = msg;
+    dom.overlay.classList.remove('nudge');
+    if (dom.resume) dom.resume.style.display = '';
     dom.overlay.classList.add('show');
   }
-  function hideOverlay() { dom.overlay.classList.remove('show'); }
+  function hideOverlay() { dom.overlay.classList.remove('show'); dom.overlay.classList.remove('nudge'); }
 
   // ---- manual pause / end early (R5.10) ---------------------------------
   function togglePause() {
     if (state.paused) {
-      state.paused = false; state.pausedByFrame = false; hideOverlay();
+      state.paused = false; hideOverlay();
       P().youtube.play(); dom.pause.textContent = 'Pause';
     } else {
-      state.paused = true; state.pausedByFrame = false;
+      state.paused = true;
       P().youtube.pause(); showOverlay('Paused', 'Press Resume or the Pause button to continue.');
       dom.pause.textContent = 'Resume';
     }
@@ -5590,7 +5690,8 @@ body[data-camtest="true"] #camtest {
       trail: [], prevLm: null,
       chartPts: [], matchWindow: [], curBin: null,
       belowSince: null,
-      paused: false, pausedByFrame: false, lastSeen: performance.now(),
+      paused: false, lastSeen: performance.now(),
+      calibrated: false, nudging: false,
       autostart: !!sess.autostart,
       session: sess
     };
@@ -5608,8 +5709,8 @@ body[data-camtest="true"] #camtest {
     dom.pause.onclick = togglePause;
     dom.end.onclick = endEarly;
     dom.resume.onclick = function () {
-      if (state.pausedByFrame) return;    // frame-pause resumes automatically
-      togglePause();
+      // Resume only applies to a manual pause now; always resume cleanly.
+      if (state.paused) togglePause(); else hideOverlay();
     };
 
     // Resolve routine + reference, set aspect, start camera + pose, mount video.
@@ -6086,9 +6187,13 @@ body[data-camtest="true"] #camtest {
       { phrases: ['begin', 'ready', 'proceed', 'yes'], action: function () { clickRole('proceed'); } }
     ]);
 
-    // Ready (§3.10): start / go -> START (countdown).
+    // Ready (§3.10): start / go -> START (countdown). Extra near-homophones so
+    // the recogniser's partial guesses still trigger it. Voice start bypasses
+    // the framing gate via PULSE.readyStart (user intends to begin).
     V.register('READY', [
-      { phrases: ['start', 'go'], action: function () { clickRole('start'); } }
+      { phrases: ['start', 'star', 'begin', 'go', 'ready', 'start it', 'let\'s go'], action: function () {
+        if (P().readyStart) P().readyStart(); else clickRole('start');
+      } }
     ]);
 
     // Exercise (§3.10): pause / resume -> toggle; stop -> END EARLY.

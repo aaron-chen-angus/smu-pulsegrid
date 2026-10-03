@@ -123,27 +123,23 @@ html, body {
 body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
 
 /* =========================================================================
-   Fixed 16:9 stage: letterboxes on other aspect ratios, scaled to viewport.
-   Scale factor is set in JS (--stage-scale) from the current viewport.
+   Fluid full-viewport stage. The app fills the window responsively (no fixed
+   1920x1080 scale transform, which was mispositioning/clipping the layout).
    ========================================================================= */
 #stage-wrap {
   position: fixed;
   inset: 0;
   z-index: 1;
-  display: grid;
-  place-items: center;
+  display: flex;
 }
 #stage {
   position: relative;
-  width: var(--stage-w);
-  height: var(--stage-h);
-  transform: scale(var(--stage-scale, 1));
-  transform-origin: center center;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  will-change: transform;          /* stable compositor layer; no re-raster on fade */
-  backface-visibility: hidden;
 }
 
 /* =========================================================================
@@ -1857,12 +1853,8 @@ body[data-camtest="true"] #camtest {
     fire(listeners.enter, name, prev);
   }
 
-  // ---- Stage scaling: fit 1920x1080 into the viewport, letterboxed -------
-  function fitStage() {
-    var vw = window.innerWidth, vh = window.innerHeight;
-    var scale = Math.min(vw / STAGE_W, vh / STAGE_H);
-    document.documentElement.style.setProperty('--stage-scale', String(scale));
-  }
+  // ---- Stage is fluid now (fills the viewport); nothing to scale. ---------
+  function fitStage() { /* no-op: layout is responsive via flexbox/CSS */ }
 
   // ---- Landscape lock ----------------------------------------------------
   function checkOrientation() {
@@ -4337,6 +4329,10 @@ body[data-camtest="true"] #camtest {
     }
 
     function drawMesh(landmarks, m, scanY) {
+      // Keep the mesh canvas sized to the displayed camera every frame.
+      var rr = d.cam.getBoundingClientRect();
+      var cw = Math.max(2, Math.round(rr.width)), ch = Math.max(2, Math.round(rr.height));
+      if (d.mesh.width !== cw || d.mesh.height !== ch) { d.mesh.width = cw; d.mesh.height = ch; }
       var ctx = d.mesh.getContext('2d');
       ctx.clearRect(0, 0, d.mesh.width, d.mesh.height);
       if (!landmarks) return;
@@ -4996,8 +4992,11 @@ body[data-camtest="true"] #camtest {
 
   function drawPose(lm) {
     if (!dom.pose) return;
+    // Keep canvas backing size in sync with displayed size every frame.
+    var rr = dom.cam.getBoundingClientRect();
+    var w = Math.max(2, Math.round(rr.width)), h = Math.max(2, Math.round(rr.height));
+    if (dom.pose.width !== w || dom.pose.height !== h) { dom.pose.width = w; dom.pose.height = h; }
     var ctx = dom.pose.getContext('2d');
-    if (dom.pose.width < 4) sizePoseCanvas();
     ctx.clearRect(0, 0, dom.pose.width, dom.pose.height);
     if (!lm) return;
 
@@ -5232,6 +5231,11 @@ body[data-camtest="true"] #camtest {
   function ty(ny, m) { return m.offY + ny * m.vh * m.scale; }
 
   function drawSkeleton(lm, speeds) {
+    // Keep the canvas backing size in sync with its displayed size every frame,
+    // so the skeleton never draws off-screen after a layout/transition change.
+    var rr = dom.cam.getBoundingClientRect();
+    var w = Math.max(2, Math.round(rr.width)), h = Math.max(2, Math.round(rr.height));
+    if (dom.skel.width !== w || dom.skel.height !== h) { dom.skel.width = w; dom.skel.height = h; }
     var ctx = dom.skel.getContext('2d');
     ctx.clearRect(0, 0, dom.skel.width, dom.skel.height);
     if (!lm) return;

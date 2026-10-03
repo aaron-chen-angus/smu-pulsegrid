@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#05070D" />
-<title>PULSE//GRID</title>
+<title>SMU//PULSE//GRID</title>
 
 <!-- Google Fonts: Orbitron (titles/numbers), Rajdhani (body). CDN only, no build step. -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -592,18 +592,20 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
   height: 100%;
   display: grid;
   grid-template-columns: 1fr 420px;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: 1fr auto;
   grid-template-areas:
     "slots  cam"
-    "slots  cam"
-    "history start";
+    "start  cam";
   gap: 20px;
   min-height: 0;
 }
 .pb-slots { grid-area: slots; display: flex; flex-direction: column; min-height: 0; }
-.pb-camwrap { grid-area: cam; display: flex; flex-direction: column; min-height: 0; }
-.pb-history { grid-area: history; min-height: 0; }
-.pb-startbar { grid-area: start; display: flex; align-items: center; justify-content: flex-end; }
+/* LIVE TEST column holds the webcam/live-test AND (at its bottom) the compact
+   Recent Sessions list, so it no longer overlaps the photo slots. */
+.pb-camwrap { grid-area: cam; display: flex; flex-direction: column; min-height: 0; gap: 12px; }
+/* START SESSION now sits directly below the photo-bank slots. */
+.pb-startbar { grid-area: start; display: flex; align-items: center; justify-content: flex-start; }
+.pb-startbar .btn { min-width: 260px; }
 
 .pb h1.pb-title {
   font-family: var(--font-title); font-weight: 800; font-size: var(--fs-2);
@@ -687,8 +689,8 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
 .slot-actions .mini:hover { color: var(--cyan); border-color: var(--cyan); }
 .slot input[type="file"] { display: none; }
 
-/* Live webcam + LIVE TEST panel. */
-.pb-camwrap .pb-cam { flex: 1 1 auto; min-height: 0; }
+/* Live webcam + LIVE TEST panel. Fixed-ish height so Recent Sessions gets room. */
+.pb-camwrap .pb-cam { flex: 0 0 auto; height: 230px; min-height: 0; }
 .pb-livetest {
   display: flex; align-items: center; gap: 14px;
   margin-top: 12px;
@@ -710,31 +712,35 @@ body[data-screen="EXERCISE"] #bg .horizon { animation: none; opacity: 0.12; }
 }
 
 /* Session history list. */
+/* Recent Sessions — compact + scrollable, lives at the bottom of LIVE TEST. */
+.pb-history { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.pb-history .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px; }
+.pb-history .panel-title { font-size: 11px; margin: 0 0 8px; }
 .pb-history .hist-list {
-  max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 8px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
 }
 .pb-history .hist-row {
-  display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;
-  padding: 8px 12px; border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius);
-  font-size: var(--fs-5);
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center;
+  padding: 5px 8px; border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius);
+  font-size: 11px;
 }
-.pb-history .hist-row .hist-name { font-family: var(--font-title); color: #eaffff; letter-spacing: 0.04em; }
-.pb-history .hist-row .hist-when { color: var(--white-60); }
-.pb-history .hist-actions { display: flex; gap: 6px; }
+.pb-history .hist-row .hist-name { font-family: var(--font-title); color: #eaffff; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-history .hist-row .hist-when { color: var(--white-60); font-size: 10px; }
+.pb-history .hist-actions { display: flex; gap: 4px; }
 .pb-history .hist-actions .mini {
-  min-height: 28px; padding: 0 10px; font-family: var(--font-title); font-size: 11px;
-  letter-spacing: 0.08em; color: var(--white-60); background: transparent;
+  min-height: 22px; padding: 0 7px; font-family: var(--font-title); font-size: 10px;
+  letter-spacing: 0.06em; color: var(--white-60); background: transparent;
   border: 1px solid rgba(0,229,255,0.3); border-radius: var(--radius); cursor: pointer;
 }
 .pb-history .hist-actions .mini:hover { color: var(--cyan); border-color: var(--cyan); }
-.pb-history .hist-clearbar { display: flex; justify-content: flex-end; margin-top: 6px; }
+.pb-history .hist-clearbar { display: flex; justify-content: flex-end; margin-top: 5px; }
 .pb-history .hist-clearbar .mini {
-  min-height: 28px; padding: 0 12px; font-family: var(--font-title); font-size: 11px;
-  letter-spacing: 0.08em; color: var(--white-30); background: transparent;
+  min-height: 22px; padding: 0 10px; font-family: var(--font-title); font-size: 10px;
+  letter-spacing: 0.06em; color: var(--white-30); background: transparent;
   border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius); cursor: pointer;
 }
 .pb-history .hist-clearbar .mini:hover { color: var(--alert); border-color: var(--alert); }
-.pb-history .hist-empty { color: var(--white-30); font-style: italic; font-size: var(--fs-5); }
+.pb-history .hist-empty { color: var(--white-30); font-style: italic; font-size: 11px; }
 
 /* Model-loading toast (first enrol triggers a one-time download). */
 .pb-toast {
@@ -1362,7 +1368,7 @@ body[data-camtest="true"] #camtest {
 
     <!-- Header bar (§3.3) -->
     <header id="header">
-      <div class="wordmark">PULSE<span class="slash">//</span>GRID</div>
+      <div class="wordmark">SMU<span class="slash">//</span>PULSE<span class="slash">//</span>GRID</div>
       <nav class="rail" id="rail" aria-label="Session progress"></nav>
       <div class="header-right">
         <div class="clock" id="clock">--:--</div>
@@ -1389,9 +1395,9 @@ body[data-camtest="true"] #camtest {
             <div class="slot-row" id="slot-row"><!-- slots injected --></div>
           </div>
 
-          <!-- Right: live webcam + LIVE TEST -->
+          <!-- Right: LIVE TEST on top, compact Recent Sessions beneath it -->
           <div class="pb-camwrap">
-            <div class="panel" style="display:flex;flex-direction:column;flex:1 1 auto;min-height:0">
+            <div class="panel" style="display:flex;flex-direction:column;flex:0 0 auto">
               <span class="notch-bl"></span><span class="notch-br"></span>
               <div class="panel-title">Live Test</div>
               <div class="pb-cam" id="pb-cam"></div>
@@ -1404,18 +1410,17 @@ body[data-camtest="true"] #camtest {
                 <button class="btn" id="lt-btn">Live Test</button>
               </div>
             </div>
-          </div>
 
-          <!-- Bottom-left: session history -->
-          <div class="pb-history">
-            <div class="panel" style="height:100%;display:flex;flex-direction:column;min-height:0">
-              <span class="notch-bl"></span><span class="notch-br"></span>
-              <div class="panel-title">Recent Sessions</div>
-              <div class="hist-list" id="hist-list"></div>
+            <!-- Recent Sessions: small, scrollable, under LIVE TEST -->
+            <div class="pb-history">
+              <div class="panel"><span class="notch-bl"></span><span class="notch-br"></span>
+                <div class="panel-title">Recent Sessions</div>
+                <div class="hist-list" id="hist-list"></div>
+              </div>
             </div>
           </div>
 
-          <!-- Bottom-right: start -->
+          <!-- Below the photo slots: START SESSION -->
           <div class="pb-startbar">
             <button class="btn primary" id="pb-start" data-goto="SIGN_IN">Start Session</button>
           </div>

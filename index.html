@@ -62,8 +62,9 @@
 html, body {
   margin: 0;
   padding: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;               /* dynamic viewport height on mobile browsers */
   overflow: hidden;              /* R11.4: no scrolling on any screen */
   background: var(--bg);
   color: #e8f6ff;
@@ -3088,7 +3089,10 @@ body[data-camtest="true"] #camtest {
     if (!slot) return Promise.resolve(null);
     buildUI(slot);
 
-    var video = P().camera.getVideo();
+    // IMPORTANT: use THIS section's own camera <video>, not camera.getVideo()
+    // (which returns the first-mounted element — the Photo Bank's — so the scan
+    // was detecting on the wrong/empty video and always got 0 frames).
+    var video = sectionEl.querySelector('.cam video') || P().camera.getVideo();
     var frames = [];
     var cancelled = false;
     var startAt = 0;
@@ -3112,7 +3116,7 @@ body[data-camtest="true"] #camtest {
         .catch(function (err) { try { console.warn('[emotion] expression model FAILED', err); } catch (e) {} return null; })
     ])
       .then(function () {
-        if (!video) video = P().camera.getVideo();
+        if (!video) video = sectionEl.querySelector('.cam video') || P().camera.getVideo();
         if (!video) { try { console.warn('[emotion] no video element'); } catch (e) {} }
         startAt = performance.now();
         return new Promise(function (resolve) {
@@ -3273,10 +3277,20 @@ body[data-camtest="true"] #camtest {
     return loading;
   }
 
-  // detect(video, tsMs) -> result | null. Timestamp must be monotonic increasing.
-  function detect(video, tsMs) {
+  // detect(video, tsMs) -> result | null.
+  // CRITICAL: detectForVideo requires timestamps that strictly increase for the
+  // LIFETIME of this landmarker instance. The landmarker is shared across the
+  // Ready and Exercise screens, so each screen's own baseline would hand it a
+  // smaller timestamp after a screen switch, making it throw (and the skeleton
+  // vanish right after the countdown). We therefore ignore the caller's tsMs and
+  // use a single global monotonic counter here.
+  var lastGlobalTs = 0;
+  function detect(video /*, tsMs ignored */) {
     if (!landmarker || !video) return null;
-    try { return landmarker.detectForVideo(video, tsMs); }
+    var ts = performance.now();
+    if (ts <= lastGlobalTs) ts = lastGlobalTs + 1;
+    lastGlobalTs = ts;
+    try { return landmarker.detectForVideo(video, ts); }
     catch (e) { return null; }
   }
 
@@ -3739,6 +3753,7 @@ body[data-camtest="true"] #camtest {
     r.onresult = onResult;
     r.onerror = onError;
     r.onend = onEnd;
+    r.onstart = function () { active = true; try { console.log('[voice] listening'); } catch (e) {} };
     return r;
   }
 
@@ -3747,8 +3762,11 @@ body[data-camtest="true"] #camtest {
     running = true;
     if (active) return;
     if (!rec) rec = build();
-    try { rec.start(); active = true; }
-    catch (e) { /* InvalidStateError if already started; ignore */ }
+    try { rec.start(); }   // active flips true in onstart; do NOT assume success here
+    catch (e) {
+      // Already-started throws InvalidStateError — that's fine, it's running.
+      try { console.log('[voice] start() threw (likely already running):', e && e.name); } catch (ignore) {}
+    }
   }
   function stop() {
     running = false;
@@ -3766,16 +3784,21 @@ body[data-camtest="true"] #camtest {
     if (running) {
       // Auto-restart quickly so there's minimal deaf time between sessions.
       restartTimer = setTimeout(function () {
-        if (running && !active) { try { rec.start(); active = true; } catch (e) {} }
-      }, 120);
+        if (running && !active) { try { rec.start(); } catch (e) {} }
+      }, 150);
     }
   }
 
   function onError(e) {
     active = false;
     var err = e && e.error;
-    // Permission denied -> stop trying (graceful).
-    if (err === 'not-allowed' || err === 'service-not-allowed') { running = false; return; }
+    try { console.warn('[voice] error:', err); } catch (ignore) {}
+    // Permission denied -> stop trying (graceful) and tell the user via console.
+    if (err === 'not-allowed' || err === 'service-not-allowed') {
+      running = false;
+      try { console.warn('[voice] microphone permission denied — allow mic for voice commands'); } catch (ignore) {}
+      return;
+    }
     if (err === 'language-not-supported' && !usedFallbackLang) {
       usedFallbackLang = true;
       if (rec) rec.lang = FALLBACK;

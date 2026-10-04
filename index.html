@@ -1247,7 +1247,8 @@ body[data-voice="off"] .voice-hint { display: none; }
 .sum-footer .autoreturn { margin-left: auto; color: var(--white-30); font-size: var(--fs-5); font-style: italic; }
 
 /* =========================================================================
-   Landscape lock (R11.5). Portrait -> "Rotate to landscape".
+   Rotate hint — now only for genuinely tiny landscape viewports; portrait is a
+   supported layout (mobile vertical), so we no longer block it.
    ========================================================================= */
 #rotate {
   position: fixed;
@@ -1262,7 +1263,7 @@ body[data-voice="off"] .voice-hint { display: none; }
   text-align: center;
   padding: 40px;
 }
-body[data-portrait="true"] #rotate { display: flex; }
+/* Intentionally NOT shown on portrait anymore. */
 #rotate .icon {
   width: 92px; height: 92px; color: var(--cyan);
   animation: rotateHint 2.4s ease-in-out infinite;
@@ -1351,6 +1352,77 @@ body[data-camtest="true"] #camtest {
   .screen, .btn, .btn::before, .gauge .fill { transition: none !important; }
   #bg .horizon, #rotate .icon { animation: none !important; }
 }
+
+/* =========================================================================
+   PORTRAIT / MOBILE VERTICAL (first-class responsive layout)
+   The desktop landscape layout above is unchanged. In portrait we:
+   - shrink the header and progress rail,
+   - stack two-column screens into single columns that scroll,
+   - turn the EXERCISE screen into a FOREFRONT 9:16 instructor video with the
+     webcam + pose skeleton as a draggable Picture-in-Picture overlay, and a
+     compact metrics strip underneath.
+   ========================================================================= */
+@media (orientation: portrait) {
+  :root { --header-h: 56px; }
+  #header { padding: 0 14px; }
+  .wordmark { font-size: 18px; letter-spacing: 0.08em; }
+  .rail { gap: 5px; }
+  .rail .link { width: 12px; }
+  .clock { font-size: 15px; }
+  .screen { padding: 12px 12px 16px; overflow-y: auto; }
+
+  /* Photo Bank: single column, slots wrap, LIVE TEST + history below. */
+  .pb { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "slots" "start" "cam"; overflow-y: auto; }
+  .slot-row { grid-template-columns: repeat(2, 1fr); }
+  .pb-startbar .btn { width: 100%; min-width: 0; }
+
+  /* Sign In / Sign Out: stack cam over info. */
+  .fs { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "cam" "info" "footer"; overflow-y: auto; }
+  .fs-stage { min-height: 46vh; }
+  .fs-footer { flex-wrap: wrap; }
+
+  /* Ready: stack card over the framing cam. */
+  .rdy { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .rdy-stage { min-height: 50vh; }
+
+  /* ---- EXERCISE: forefront video + PiP webcam ---- */
+  .ex-body { display: block; position: relative; }
+  .ex[data-aspect] [data-role="video"],
+  .ex[data-aspect] [data-role="camwrap"],
+  .ex[data-aspect] [data-role="metrics"] { grid-area: auto; }
+
+  /* Instructor video fills the main area (forefront). */
+  .ex[data-aspect] .ex-video {
+    position: relative; width: 100%; height: 64vh; border-radius: var(--radius);
+  }
+  /* Webcam + skeleton become a small PiP overlay, top-right, draggable. */
+  .ex[data-aspect] .ex-cam {
+    position: absolute; top: 8px; right: 8px; z-index: 20;
+    width: 34vw; max-width: 180px; height: 25vh; max-height: 240px;
+    border: 1px solid var(--cyan); border-radius: var(--radius);
+    box-shadow: 0 0 14px rgba(0,229,255,0.5); overflow: hidden; background: #02040a;
+    touch-action: none;             /* allow drag */
+  }
+  .ex[data-aspect] .ex-cam .cam { position: absolute; inset: 0; }
+  .ex[data-aspect] .ex-controls { top: 4px; right: 4px; gap: 4px; }
+  .ex[data-aspect] .ex-controls .btn { min-height: 32px; padding: 0 8px; font-size: 11px; }
+  /* Metrics sit as a compact strip beneath the video. */
+  .ex[data-aspect] .ex-metrics { flex-direction: column; margin-top: 10px; }
+  .ex[data-aspect] .gauges { flex-direction: row; flex-wrap: nowrap; }
+  .ex[data-aspect] .gauges .gauge svg { width: 84px; height: 84px; }
+  .ex[data-aspect] .metrics-chart canvas { min-height: 90px; }
+
+  /* Session Complete + Summary: single column, scroll. */
+  .sc { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "tiles" "timeline" "footer"; overflow-y: auto; }
+  .sc-grid { grid-template-columns: repeat(2, 1fr); }
+  .sum { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; grid-template-areas: "hero" "tiles" "emotion" "timeline" "footer"; overflow-y: auto; }
+  .sum-tilegrid { grid-template-columns: repeat(2, 1fr); }
+  .sum-footer { flex-wrap: wrap; }
+  .sum-footer .btn { flex: 1 1 40%; }
+}
+
+/* A PiP that the user has dragged keeps its JS-set inline left/top. */
+.ex-cam.pip-dragged { right: auto !important; }
 </style>
 </head>
 
@@ -1862,7 +1934,10 @@ body[data-camtest="true"] #camtest {
   // ---- Stage is fluid now (fills the viewport); nothing to scale. ---------
   function fitStage() { /* no-op: layout is responsive via flexbox/CSS */ }
 
-  // ---- Landscape lock ----------------------------------------------------
+  // ---- Orientation / responsive view -------------------------------------
+  // Portrait is now a first-class layout (mobile vertical), so we no longer
+  // force a "rotate to landscape" lock. We expose data-portrait for CSS to
+  // switch the Exercise screen into forefront-video + PiP-webcam mode.
   function checkOrientation() {
     var portrait = window.innerHeight > window.innerWidth;
     el.body.setAttribute('data-portrait', portrait ? 'true' : 'false');
@@ -3645,8 +3720,66 @@ body[data-camtest="true"] #camtest {
     var existing = P().store.loadSessions();
     if (existing.some(function (e) { return e.session_id === s.sessionId; })) return entry;
     P().store.addSession(entry);
+    // Phase 2: also push to Google Sheets if configured (non-blocking).
+    sendToSheets(bundle);
     return entry;
   }
+
+  // ---- Google Sheets live logging (Phase 2, §3.9 / R9.2) -----------------
+  // POSTs the bundle with Content-Type: text/plain so Apps Script receives it
+  // without a CORS preflight it cannot answer. Failures are queued in
+  // localStorage and retried on the next app load / next successful send.
+  var SHEETS = (CFG.sheets || {});
+  var QUEUE_KEY = 'pulsegrid.sheetsQueue';
+
+  function sheetsEnabled() { return !!(SHEETS.url && String(SHEETS.url).indexOf('http') === 0); }
+
+  function loadQueue() {
+    try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function saveQueue(q) {
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-50))); } catch (e) {}
+  }
+
+  function postBundle(bundle) {
+    // Returns a Promise that resolves true on success, false otherwise.
+    if (!sheetsEnabled()) return Promise.resolve(false);
+    var body = JSON.stringify({ token: SHEETS.token || '', sessions: bundle.sessions,
+      emotionScans: bundle.emotionScans, intensityTimeline: bundle.intensityTimeline });
+    return fetch(SHEETS.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // avoids preflight
+      body: body
+    }).then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (t) {
+        try { var j = JSON.parse(t); return !!(j && j.ok); } catch (e) { return !!t; }
+      })
+      .catch(function () { return false; });
+  }
+
+  function sendToSheets(bundle) {
+    if (!sheetsEnabled()) return;
+    postBundle(bundle).then(function (ok) {
+      if (!ok) { var q = loadQueue(); q.push(bundle); saveQueue(q); }
+      else { flushQueue(); }
+    });
+  }
+
+  // Retry any queued bundles (called on load and after a successful send).
+  var flushing = false;
+  function flushQueue() {
+    if (flushing || !sheetsEnabled()) return;
+    var q = loadQueue();
+    if (!q.length) return;
+    flushing = true;
+    var next = q[0];
+    postBundle(next).then(function (ok) {
+      flushing = false;
+      if (ok) { var cur = loadQueue(); cur.shift(); saveQueue(cur); flushQueue(); }
+    });
+  }
+  // Attempt to drain the queue shortly after load.
+  setTimeout(flushQueue, 4000);
 
   // ---- CSV helpers -------------------------------------------------------
   function csvCell(v) {
@@ -5732,6 +5865,37 @@ body[data-camtest="true"] #camtest {
   }
   function showYtError() { if (dom.yterror) dom.yterror.classList.add('show'); }
 
+  // Make the PiP webcam draggable (portrait/mobile). Pointer events cover both
+  // touch and mouse. No-op on desktop where .ex-cam isn't absolutely placed.
+  function setupPipDrag() {
+    var pip = dom.cam && dom.cam.closest ? dom.cam.closest('[data-role="camwrap"]') : null;
+    if (!pip || pip._pipWired) return;
+    pip._pipWired = true;
+    var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    pip.addEventListener('pointerdown', function (e) {
+      // Only drag when in PiP mode (absolute positioning via portrait CSS).
+      if (getComputedStyle(pip).position !== 'absolute') return;
+      if (e.target.closest('.btn')) return;   // don't hijack control buttons
+      dragging = true;
+      var r = pip.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      pip.setPointerCapture && pip.setPointerCapture(e.pointerId);
+    });
+    pip.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var nx = ox + (e.clientX - sx), ny = oy + (e.clientY - sy);
+      var pr = pip.parentElement.getBoundingClientRect();
+      nx = Math.max(pr.left, Math.min(nx, pr.right - pip.offsetWidth));
+      ny = Math.max(pr.top, Math.min(ny, pr.bottom - pip.offsetHeight));
+      pip.classList.add('pip-dragged');
+      pip.style.left = (nx - pr.left) + 'px';
+      pip.style.top = (ny - pr.top) + 'px';
+    });
+    function endDrag() { dragging = false; }
+    pip.addEventListener('pointerup', endDrag);
+    pip.addEventListener('pointercancel', endDrag);
+  }
+
   // ---- lifecycle --------------------------------------------------------
   function onEnter() {
     var section = document.querySelector('.screen[data-name="EXERCISE"] .ex');
@@ -5770,6 +5934,7 @@ body[data-camtest="true"] #camtest {
       // Resume only applies to a manual pause now; always resume cleanly.
       if (state.paused) togglePause(); else hideOverlay();
     };
+    setupPipDrag();   // let the user drag the PiP webcam on mobile portrait
 
     // Resolve routine + reference, set aspect, start camera + pose, mount video.
     P().routines.active().then(function (r) {

@@ -1378,19 +1378,35 @@ body[data-camtest="true"] #camtest {
   /* Rail hidden -> let the header collapse its centre column cleanly. */
   #header { grid-template-columns: auto 1fr auto; }
 
-  /* Photo Bank: single column, slots wrap, LIVE TEST + history below. */
-  .pb { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "slots" "start" "cam"; overflow-y: auto; }
+  /* Portrait layout principle: screens flow top-to-bottom in NORMAL block flow
+     (no fixed-height grid rows that overlap on tall phones), their panels are
+     auto-height, and the active screen scrolls. This single rule fixes the
+     overlap seen on Sign In / Sign Out / Complete / Summary. */
+  .pb, .fs, .sc, .sum {
+    display: block !important;
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
+  }
+  .pb > *, .fs > *, .sc > *, .sum > * { margin-bottom: 14px; }
+  /* Panels inside those screens must size to content, not fill a grid cell. */
+  .fs .panel, .sc .panel, .sum .panel, .pb .panel { height: auto !important; }
+
+  /* Photo Bank: slots wrap 2-up, start full width. */
   .slot-row { grid-template-columns: repeat(2, 1fr); }
   .pb-startbar .btn { width: 100%; min-width: 0; }
 
-  /* Sign In / Sign Out: stack cam over info. */
-  .fs { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "cam" "info" "footer"; overflow-y: auto; }
-  .fs-stage { min-height: 46vh; }
-  .fs-footer { flex-wrap: wrap; }
+  /* Sign In / Sign Out: camera panel a sensible height, info flows beneath. */
+  .fs-cam { min-height: 44vh; }
+  .fs-stage { height: 44vh; min-height: 44vh; }
+  .fs-footer { flex-wrap: wrap; gap: 10px; }
+  .fs-footer .btn { flex: 1 1 auto; }
+  .fs-emotion-slot { min-height: 0; }
 
-  /* Ready: stack card over the framing cam. */
-  .rdy { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .rdy-stage { min-height: 50vh; }
+  /* Ready: card then framing cam. */
+  .rdy { display: block !important; height: auto !important; min-height: 100%; }
+  .rdy > * { margin-bottom: 14px; }
+  .rdy-stage { height: 50vh; min-height: 50vh; }
 
   /* ---- EXERCISE: forefront instructor video with the webcam as a PiP ----
      Layout is a vertical flow: [big video (with PiP overlay)] then [metrics].
@@ -1426,13 +1442,17 @@ body[data-camtest="true"] #camtest {
   .ex[data-aspect] .gauges .gauge svg { width: 72px; height: 72px; }
   .ex[data-aspect] .metrics-chart canvas { min-height: 80px; }
 
-  /* Session Complete + Summary: single column, scroll. */
-  .sc { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "tiles" "timeline" "footer"; overflow-y: auto; }
+  /* Session Complete + Summary now flow as blocks (rule above). Just size the
+     inner tile grids and give charts a fixed height so they don't collapse. */
   .sc-grid { grid-template-columns: repeat(2, 1fr); }
-  .sum { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; grid-template-areas: "hero" "tiles" "emotion" "timeline" "footer"; overflow-y: auto; }
+  .sc-timeline canvas, .sum-timeline canvas { height: 150px; min-height: 150px; }
+  .sum-emotion .radar-wrap canvas { width: 220px; height: 220px; }
   .sum-tilegrid { grid-template-columns: repeat(2, 1fr); }
-  .sum-footer { flex-wrap: wrap; }
-  .sum-footer .btn { flex: 1 1 40%; }
+  .sc-footer, .sum-footer { flex-wrap: wrap; gap: 10px; }
+  .sc-footer .btn, .sum-footer .btn { flex: 1 1 auto; }
+  /* Hero wraps nicely on narrow screens. */
+  .sum-hero { flex-wrap: wrap; }
+  .sum-hero h1 { font-size: var(--fs-2); }
 }
 
 /* A PiP that the user has dragged keeps its JS-set inline left/top. */
@@ -5913,14 +5933,43 @@ body[data-camtest="true"] #camtest {
         var trim = P().routines.trimDuration(state.routine);
         state.total = (trim != null && trim > 0) ? trim : (d || 0);
         updateTimer();
-        if (state.autostart) P().youtube.play();
+        if (state.autostart) {
+          P().youtube.play();
+          // Mobile browsers block autoplay; if it hasn't started shortly, show
+          // a one-tap overlay (a direct user gesture is allowed to play).
+          setTimeout(checkAutoplay, 1200);
+        }
       },
       onStateChange: function (e) {
+        if (e.data === P().youtube.STATE.PLAYING) hideTapToPlay();
         if (e.data === P().youtube.STATE.ENDED) finish(true);   // R5.9
       },
       onError: function () { showYtError(); }
     }).catch(function () { showYtError(); });
   }
+  function checkAutoplay() {
+    // If the player isn't playing yet (autoplay blocked), surface a tap overlay.
+    try {
+      var st = P().youtube.STATE, cur = (window.YT && P().youtube) ? null : null;
+    } catch (e) {}
+    // getCurrentTime stays ~0 and state not PLAYING when blocked.
+    if ((P().youtube.currentTime() || 0) < 0.2) showTapToPlay();
+  }
+  function showTapToPlay() {
+    if (!dom.overlay) return;
+    dom.overtitle.textContent = 'Tap to start video';
+    dom.overmsg.textContent = 'Your browser blocked autoplay — tap to begin the routine.';
+    dom.overlay.classList.remove('nudge');
+    if (dom.resume) { dom.resume.style.display = ''; dom.resume.textContent = 'Start Video'; }
+    dom.overlay.classList.add('show');
+    if (dom.resume) dom.resume.onclick = function () {
+      P().youtube.play();
+      hideTapToPlay();
+      dom.resume.textContent = 'Resume';
+      dom.resume.onclick = function () { if (state.paused) togglePause(); else hideOverlay(); };
+    };
+  }
+  function hideTapToPlay() { if (dom.overlay) { dom.overlay.classList.remove('show'); } }
   function showYtError() { if (dom.yterror) dom.yterror.classList.add('show'); }
 
   // Make the PiP webcam draggable (portrait/mobile). Pointer events cover both
@@ -6552,6 +6601,16 @@ body[data-camtest="true"] #camtest {
     if (V.isAvailable() && window.PULSE.current && VOICE_SCREENS.indexOf(window.PULSE.current()) !== -1) {
       V.start();
     }
+
+    // Robustness: the mic permission prompt only reliably appears after a user
+    // gesture on some browsers. Kick the recogniser on the first interaction so
+    // "begin"/"start"/"sign out" work without the user clicking the button.
+    function kick() {
+      if (!V.isAvailable()) return;
+      if (window.PULSE.current && VOICE_SCREENS.indexOf(window.PULSE.current()) !== -1) V.start();
+    }
+    document.addEventListener('pointerdown', kick, { once: false });
+    document.addEventListener('keydown', kick, { once: false });
   }
 
   if (document.readyState === 'loading') {

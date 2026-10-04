@@ -1908,7 +1908,14 @@ body[data-camtest="true"] #camtest {
   var current = null;
   var listeners = { enter: {}, leave: {} };
 
-  function onEnter(name, fn) { (listeners.enter[name] = listeners.enter[name] || []).push(fn); }
+  function onEnter(name, fn) {
+    (listeners.enter[name] = listeners.enter[name] || []).push(fn);
+    // If this screen is ALREADY active when a listener registers (common when a
+    // screen controller's script loads after the router already navigated to the
+    // entry screen), fire it immediately so it isn't missed. This prevents the
+    // "camera never starts on the entry screen" class of bug for every screen.
+    if (current === name) { try { fn(name, null); } catch (e) { console.error('[router]', name, e); } }
+  }
   function onLeave(name, fn) { (listeners.leave[name] = listeners.leave[name] || []).push(fn); }
   function fire(map, name, prev) {
     (map[name] || []).forEach(function (fn) {
@@ -4434,8 +4441,7 @@ body[data-camtest="true"] #camtest {
     if (!window.PULSE || !window.PULSE.onEnter) { setTimeout(register, 30); return; }
     window.PULSE.onEnter('PHOTO_BANK', onEnter);
     window.PULSE.onLeave('PHOTO_BANK', onLeave);
-    // If Photo Bank is already the active screen at load, run enter now.
-    if (window.PULSE.current && window.PULSE.current() === 'PHOTO_BANK') onEnter();
+    // (Router auto-fires onEnter if PHOTO_BANK is already active at registration.)
   }
 
   if (document.readyState === 'loading') {

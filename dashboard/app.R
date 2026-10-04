@@ -93,7 +93,8 @@ emptyplot <- function(msg) ggplot() +
            fontface = "bold", family = "sans") +
   annotate("text", 0, -0.15, label = msg, colour = MUTE, size = 4.5) +
   ylim(-1, 1) +
-  theme_void() + theme(plot.background = element_rect(fill = PANEL, colour = NA))
+  theme_void() + theme(plot.background  = element_rect(fill = PANEL, colour = NA),
+                       panel.background = element_rect(fill = PANEL, colour = NA))
 
 # Neon label helper for bars (glow-ish white text sitting just above/beside bars)
 lab_num <- function(x, pct = FALSE, dp = 0) {
@@ -212,7 +213,7 @@ server <- function(input, output, session) {
   output$vb_kcal     <- renderValueBox({ v <- if ("kcal" %in% names(sessions())) round(sum(sessions()$kcal, na.rm=TRUE),1) else 0
     vbx(v, "Total kcal", "fire", "orange") })
 
-  output$p_sessions_time <- renderPlot({
+  output$p_sessions_time <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!nrow(s) || !"sign_in_dt" %in% names(s)) return(emptyplot("No sessions yet"))
     d <- s %>% filter(!is.na(sign_in_dt)) %>% mutate(day = as.Date(sign_in_dt)) %>% count(day)
     if (!nrow(d)) return(emptyplot("No dated sessions"))
@@ -224,7 +225,7 @@ server <- function(input, output, session) {
       scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
       labs(x = NULL, y = "Sessions") + theme_tron() + tron_grid
   })
-  output$p_completion <- renderPlot({
+  output$p_completion <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!nrow(s) || !"completed" %in% names(s)) return(emptyplot("No sessions yet"))
     d <- s %>% mutate(c = as_bool(completed)) %>% count(c) %>%
       mutate(lbl = ifelse(c,"Completed","Ended early"), pct = n / sum(n))
@@ -236,11 +237,14 @@ server <- function(input, output, session) {
                colour = OK, size = 11, fontface = "bold", family = "sans") +
       annotate("text", x = 0.3, y = 0, label = "", colour = MUTE) +
       scale_fill_manual(values = c("Completed"=OK, "Ended early"=ORANGE)) +
-      theme_void() + theme(plot.background = element_rect(fill = PANEL, colour = NA),
+      theme_void() + theme(plot.background  = element_rect(fill = PANEL, colour = NA),
+                           panel.background = element_rect(fill = PANEL, colour = NA),
                            legend.position = "bottom",
+                           legend.background = element_rect(fill = PANEL, colour = NA),
+                           legend.key = element_rect(fill = PANEL, colour = NA),
                            legend.text = element_text(colour = MUTE), legend.title = element_blank())
   })
-  output$p_match_dist <- renderPlot({
+  output$p_match_dist <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!"match_pct" %in% names(s) || !any(!is.na(s$match_pct))) return(emptyplot("No match data"))
     m <- s$match_pct[!is.na(s$match_pct)]
     ggplot(data.frame(m = m), aes(m)) +
@@ -251,7 +255,7 @@ server <- function(input, output, session) {
       scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
       labs(x = "Match %", y = "Count") + theme_tron() + tron_grid
   })
-  output$p_effort <- renderPlot({
+  output$p_effort <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!all(c("upper_effort_pct","lower_effort_pct") %in% names(s))) return(emptyplot("No effort data"))
     nm <- if ("name" %in% names(s)) s$name else s$session_id
     d <- data.frame(name = nm, Upper = s$upper_effort_pct, Lower = s$lower_effort_pct) %>%
@@ -272,7 +276,7 @@ server <- function(input, output, session) {
   output$sb_match<- renderValueBox({ r <- cur(); vbx(ifelse(nrow(r) && !is.na(r$match_pct[1]), paste0(round(r$match_pct[1]),"%"), "—"), "Match", "bullseye", "green") })
   output$sb_sync <- renderValueBox({ r <- cur(); vbx(ifelse(nrow(r) && !is.na(r$sync_score[1]), round(r$sync_score[1]), "—"), "Sync", "wave-square", "teal") })
 
-  output$p_timeline <- renderPlot({
+  output$p_timeline <- renderPlot(bg = PANEL, {
     t <- timeline(); if (is.null(input$sel_session)) return(emptyplot("Select a session"))
     d <- t[t$session_id == input$sel_session,,drop=FALSE]
     if (nrow(d) < 2) return(emptyplot("No timeline for this session"))
@@ -285,7 +289,7 @@ server <- function(input, output, session) {
   })
 
   emo_cur <- reactive({ e <- emotions(); req(input$sel_session); e[e$session_id == input$sel_session,,drop=FALSE] })
-  output$p_emo_inout <- renderPlot({
+  output$p_emo_inout <- renderPlot(bg = PANEL, {
     e <- emo_cur(); if (!nrow(e)) return(emptyplot("No emotion scans"))
     rows <- lapply(c("in","out"), function(ph){
       r <- e[e$phase==ph,,drop=FALSE]; if (!nrow(r)) return(NULL)
@@ -297,7 +301,7 @@ server <- function(input, output, session) {
       labs(x = NULL, y = "Mean probability") + theme_tron() + tron_grid +
       theme(axis.text.x = element_text(angle = 30, hjust = 1))
   })
-  output$p_delta <- renderPlot({
+  output$p_delta <- renderPlot(bg = PANEL, {
     e <- emo_cur(); ein <- e[e$phase=="in", EMO_COLS, drop=FALSE]; eout <- e[e$phase=="out", EMO_COLS, drop=FALSE]
     if (!nrow(ein) || !nrow(eout)) return(emptyplot("Need both scans"))
     d <- data.frame(emotion = EMO_COLS, delta = as.numeric(eout[1,]) - as.numeric(ein[1,]))
@@ -307,14 +311,14 @@ server <- function(input, output, session) {
       theme(axis.text.x = element_text(angle = 30, hjust = 1))
   })
 
-  output$p_stress <- renderPlot({
+  output$p_stress <- renderPlot(bg = PANEL, {
     e <- emotions(); if (!"stress_level" %in% names(e) || !nrow(e)) return(emptyplot("No stress data"))
     d <- e %>% count(phase, stress_level)
     ggplot(d, aes(phase, n, fill = stress_level)) + geom_col() +
       scale_fill_manual(values = c("Normal"=OK, "Elevated"=ORANGE, "High"=ALERT)) +
       labs(x = NULL, y = "Scans") + theme_tron() + tron_grid
   })
-  output$p_valence <- renderPlot({
+  output$p_valence <- renderPlot(bg = PANEL, {
     e <- emotions(); if (!all(c("valence","phase","session_id") %in% names(e))) return(emptyplot("No valence data"))
     w <- e %>% select(session_id, phase, valence) %>% pivot_wider(names_from = phase, values_from = valence)
     if (!all(c("in","out") %in% names(w))) return(emptyplot("Need in & out scans"))
@@ -325,7 +329,7 @@ server <- function(input, output, session) {
       labs(x = NULL, y = "Valence change") + theme_tron() + tron_grid +
       theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 8))
   })
-  output$p_emo_profile <- renderPlot({
+  output$p_emo_profile <- renderPlot(bg = PANEL, {
     e <- emotions(); if (!nrow(e)) return(emptyplot("No emotion data"))
     m <- data.frame(emotion = EMO_COLS, v = sapply(EMO_COLS, function(c) mean(e[[c]], na.rm=TRUE)))
     m <- m[order(-m$v), ]; m$emotion <- factor(m$emotion, levels = m$emotion)
@@ -338,7 +342,7 @@ server <- function(input, output, session) {
       labs(x = NULL, y = "Mean probability") + theme_tron() + tron_grid
   })
 
-  output$p_scatter <- renderPlot({
+  output$p_scatter <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!all(c("match_pct","sync_score") %in% names(s))) return(emptyplot("No data"))
     d <- s[!is.na(s$match_pct) & !is.na(s$sync_score), , drop = FALSE]
     if (!nrow(d)) return(emptyplot("No match/sync data"))
@@ -349,7 +353,7 @@ server <- function(input, output, session) {
                            linewidth = 0.9, linetype = "dashed")
     p + labs(x = "Match %", y = "Sync score") + theme_tron() + tron_grid
   })
-  output$p_person <- renderPlot({
+  output$p_person <- renderPlot(bg = PANEL, {
     s <- sessions(); if (!all(c("name","match_pct") %in% names(s))) return(emptyplot("No name data"))
     d <- s %>% group_by(name) %>% summarise(match = mean(match_pct, na.rm=TRUE), .groups="drop") %>%
       arrange(match) %>% mutate(name = factor(name, levels = name))
@@ -361,7 +365,7 @@ server <- function(input, output, session) {
       scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
       labs(x = "Avg Match %", y = NULL) + theme_tron() + tron_grid
   })
-  output$p_corr <- renderPlot({
+  output$p_corr <- renderPlot(bg = PANEL, {
     s <- sessions()
     cols <- intersect(c("duration_s","active_pct","kcal","upper_avg","lower_avg",
                         "overall_avg","match_pct","sync_score","zone_pct"), names(s))

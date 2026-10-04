@@ -1392,32 +1392,39 @@ body[data-camtest="true"] #camtest {
   .rdy { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .rdy-stage { min-height: 50vh; }
 
-  /* ---- EXERCISE: forefront video + PiP webcam ---- */
-  .ex-body { display: block; position: relative; }
+  /* ---- EXERCISE: forefront instructor video with the webcam as a PiP ----
+     Layout is a vertical flow: [big video (with PiP overlay)] then [metrics].
+     The video block is the positioning context so the PiP sits over the video
+     corner, NOT over the metrics below it. */
+  .ex[data-aspect] .ex-body {
+    display: flex !important; flex-direction: column; position: relative;
+    gap: 10px; overflow: visible;
+  }
   .ex[data-aspect] [data-role="video"],
   .ex[data-aspect] [data-role="camwrap"],
   .ex[data-aspect] [data-role="metrics"] { grid-area: auto; }
 
-  /* Instructor video fills the main area (forefront). */
+  /* Instructor video = forefront, fills most of the height. */
   .ex[data-aspect] .ex-video {
-    position: relative; width: 100%; height: 64vh; border-radius: var(--radius);
+    position: relative; flex: 0 0 auto; width: 100%; height: 60vh;
+    border-radius: var(--radius); overflow: hidden;
   }
-  /* Webcam + skeleton become a small PiP overlay, top-right, draggable. */
+  /* Webcam + skeleton = small PiP overlay pinned to the video's top-right. */
   .ex[data-aspect] .ex-cam {
     position: absolute; top: 8px; right: 8px; z-index: 20;
-    width: 34vw; max-width: 180px; height: 25vh; max-height: 240px;
-    border: 1px solid var(--cyan); border-radius: var(--radius);
-    box-shadow: 0 0 14px rgba(0,229,255,0.5); overflow: hidden; background: #02040a;
-    touch-action: none;             /* allow drag */
+    width: 32vw; max-width: 150px; aspect-ratio: 3/4; height: auto;
+    border: 1.5px solid var(--cyan); border-radius: var(--radius);
+    box-shadow: 0 0 14px rgba(0,229,255,0.6); overflow: hidden; background: #02040a;
+    touch-action: none;
   }
   .ex[data-aspect] .ex-cam .cam { position: absolute; inset: 0; }
   .ex[data-aspect] .ex-controls { top: 4px; right: 4px; gap: 4px; }
-  .ex[data-aspect] .ex-controls .btn { min-height: 32px; padding: 0 8px; font-size: 11px; }
-  /* Metrics sit as a compact strip beneath the video. */
-  .ex[data-aspect] .ex-metrics { flex-direction: column; margin-top: 10px; }
-  .ex[data-aspect] .gauges { flex-direction: row; flex-wrap: nowrap; }
-  .ex[data-aspect] .gauges .gauge svg { width: 84px; height: 84px; }
-  .ex[data-aspect] .metrics-chart canvas { min-height: 90px; }
+  .ex[data-aspect] .ex-controls .btn { min-height: 30px; padding: 0 8px; font-size: 11px; }
+  /* Metrics strip below the video. */
+  .ex[data-aspect] .ex-metrics { flex-direction: column; margin-top: 0; }
+  .ex[data-aspect] .gauges { flex-direction: row; flex-wrap: nowrap; justify-content: space-around; }
+  .ex[data-aspect] .gauges .gauge svg { width: 72px; height: 72px; }
+  .ex[data-aspect] .metrics-chart canvas { min-height: 80px; }
 
   /* Session Complete + Summary: single column, scroll. */
   .sc { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "tiles" "timeline" "footer"; overflow-y: auto; }
@@ -4293,7 +4300,7 @@ body[data-camtest="true"] #camtest {
     dom.ltBtn.classList.add('voice-trigger');
     setLT('—', 'Starting camera…', 0);
 
-    P().camera.start(dom.cam, { mirror: true, showBadge: false, showTip: 'auto' })
+    P().camera.start(dom.cam, { mirror: true, showBadge: false, showTip: false })
       .then(function (r) {
         liveTest.running = true;
         liveTest.video = r.video;
@@ -4946,7 +4953,8 @@ body[data-camtest="true"] #camtest {
       if (d.typed) d.typed.classList.remove('show');
       setHint('Starting camera…', 'warn');
 
-      P().camera.start(d.cam, { mirror: true, showBadge: false, showTip: 'auto' })
+      // No setup-tip overlay on Sign In/Out — it would cover the face.
+      P().camera.start(d.cam, { mirror: true, showBadge: false, showTip: false })
         .then(function (r) {
           video = r.video;
           return P().face.loadLive();
@@ -5128,7 +5136,7 @@ body[data-camtest="true"] #camtest {
     setMeter(0, 'Step into frame', '');
     dom.start.disabled = true;
 
-    P().camera.start(dom.cam, { mirror: true, showBadge: false, showTip: 'auto' })
+    P().camera.start(dom.cam, { mirror: true, showBadge: false, showTip: false })
       .then(function (r) { video = r.video; sizePoseCanvas(); return P().pose.load(); })
       .then(function () { sizePoseCanvas(); loop(); })
       .catch(function () { setMeter(0, 'Camera or pose model unavailable', 'alert'); });

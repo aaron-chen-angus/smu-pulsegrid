@@ -1364,12 +1364,19 @@ body[data-camtest="true"] #camtest {
    ========================================================================= */
 @media (orientation: portrait) {
   :root { --header-h: 56px; }
-  #header { padding: 0 14px; }
-  .wordmark { font-size: 18px; letter-spacing: 0.08em; }
-  .rail { gap: 5px; }
-  .rail .link { width: 12px; }
-  .clock { font-size: 15px; }
-  .screen { padding: 12px 12px 16px; overflow-y: auto; }
+  /* Let the whole stage flow and scroll vertically on a phone. */
+  #stage-wrap { position: fixed; inset: 0; display: block; }
+  #stage { height: 100dvh; min-height: 100dvh; }
+  #screens { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  #header { padding: 0 12px; }
+  .wordmark { font-size: 16px; letter-spacing: 0.06em; }
+  .rail { display: none; }                 /* hide the 7-step rail on narrow phones */
+  .clock { font-size: 14px; }
+  /* Active screen becomes the scroll container; inactive ones stay hidden. */
+  .screen { padding: 12px 12px 20px; }
+  .screen.active { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  /* Rail hidden -> let the header collapse its centre column cleanly. */
+  #header { grid-template-columns: auto 1fr auto; }
 
   /* Photo Bank: single column, slots wrap, LIVE TEST + history below. */
   .pb { grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "slots" "start" "cam"; overflow-y: auto; }
@@ -1426,7 +1433,7 @@ body[data-camtest="true"] #camtest {
 </style>
 </head>
 
-<body data-screen="PHOTO_BANK">
+<body data-screen="SIGN_IN">
 
 <!-- Background: floor grid + horizon pulse + vignette -->
 <div id="bg" aria-hidden="true">
@@ -2212,9 +2219,11 @@ body[data-camtest="true"] #camtest {
       return; // diagnostics replaces the app stage
     }
 
-    // Start screen: from hash if valid, else Photo Bank.
+    // Entry point: the kiosk opens straight on SIGN_IN (face login). Enrolment
+    // lives in admin.html, not here. A valid #hash can still deep-link any
+    // screen (e.g. #PHOTO_BANK for on-device bank, reached via the gear icon).
     var fromHash = (location.hash || '').replace('#', '').split('&')[0];
-    go(SCREENS.indexOf(fromHash) !== -1 ? fromHash : 'PHOTO_BANK');
+    go(SCREENS.indexOf(fromHash) !== -1 ? fromHash : 'SIGN_IN');
   }
 
   // Public router API for later tasks (T2–T12).
@@ -3771,24 +3780,31 @@ body[data-camtest="true"] #camtest {
 
   function postBundle(bundle) {
     // Returns a Promise that resolves true on success, false otherwise.
-    if (!sheetsEnabled()) return Promise.resolve(false);
+    if (!sheetsEnabled()) { try { console.warn('[sheets] not configured (no url)'); } catch (e) {} return Promise.resolve(false); }
     var body = JSON.stringify({ token: SHEETS.token || '', sessions: bundle.sessions,
       emotionScans: bundle.emotionScans, intensityTimeline: bundle.intensityTimeline });
+    try { console.log('[sheets] posting', { sessions: bundle.sessions.length, emotionScans: bundle.emotionScans.length, timeline: bundle.intensityTimeline.length }); } catch (e) {}
+    // mode:'no-cors' is NOT used — we want to read the JSON reply. text/plain
+    // keeps it a "simple request" so no CORS preflight is sent.
     return fetch(SHEETS.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // avoids preflight
-      body: body
-    }).then(function (r) { return r.ok ? r.text() : null; })
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: body,
+      redirect: 'follow'
+    }).then(function (r) { return r.text(); })
       .then(function (t) {
-        try { var j = JSON.parse(t); return !!(j && j.ok); } catch (e) { return !!t; }
+        var ok = false;
+        try { var j = JSON.parse(t); ok = !!(j && j.ok); } catch (e) { ok = /"ok"\s*:\s*true/.test(t || ''); }
+        try { console.log('[sheets] reply ok=' + ok, (t || '').slice(0, 120)); } catch (e) {}
+        return ok;
       })
-      .catch(function () { return false; });
+      .catch(function (e) { try { console.warn('[sheets] post failed', e && e.message); } catch (ig) {} return false; });
   }
 
   function sendToSheets(bundle) {
     if (!sheetsEnabled()) return;
     postBundle(bundle).then(function (ok) {
-      if (!ok) { var q = loadQueue(); q.push(bundle); saveQueue(q); }
+      if (!ok) { var q = loadQueue(); q.push(bundle); saveQueue(q); try { console.warn('[sheets] queued for retry'); } catch (e) {} }
       else { flushQueue(); }
     });
   }
@@ -6112,7 +6128,10 @@ body[data-camtest="true"] #camtest {
     if (!section) return;
     cache(section);
     render();
-    // SIGN OUT uses data-goto already; nothing extra needed. Speak a nudge.
+    // Persist + log here too, so a session still records even if the user does
+    // not go through Sign Out → Summary. persist() dedupes by session_id, so
+    // reaching Summary later will not double-post.
+    if (P().record) P().record.persist(P().session.get());
     P().speech && P().speech.cancel();
   }
 

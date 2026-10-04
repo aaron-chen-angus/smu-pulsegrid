@@ -1127,6 +1127,14 @@ body[data-voice="off"] .voice-hint { display: none; }
 .ex-controls { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; gap: 8px; }
 .ex-controls .btn { min-height: 44px; padding: 0 16px; font-size: 15px; }
 
+/* Sound toggle (shown only when the video is muted-autoplaying on mobile). */
+.ex-sound {
+  position: absolute; left: 8px; bottom: 8px; z-index: 6;
+  font-family: var(--font-title); font-size: 12px; letter-spacing: 0.06em;
+  color: #05070D; background: var(--cyan); border: 0; border-radius: 999px;
+  padding: 8px 14px; cursor: pointer; box-shadow: var(--glow);
+}
+
 /* Out-of-frame / paused overlay. */
 .ex-overlay {
   position: absolute; inset: 0; z-index: 5; display: none;
@@ -1646,6 +1654,7 @@ body[data-camtest="true"] #camtest {
             <!-- Reference video -->
             <div class="ex-video" data-role="video">
               <div class="ex-vlabel">Instructor</div>
+              <button class="ex-sound" data-role="sound" title="Toggle sound" style="display:none">🔇 Tap for sound</button>
               <div class="yt-holder" id="ex-yt"></div>
               <div class="yt-error" data-role="yterror">
                 <h3>Video unavailable</h3>
@@ -3608,11 +3617,18 @@ body[data-camtest="true"] #camtest {
         if (player && currentId === routine.youtubeId) { resolve(player); return; }
         if (player && player.destroy) { try { player.destroy(); } catch (e) {} player = null; }
         currentId = routine.youtubeId;
+        // Muted autoplay is permitted on mobile; unmuted autoplay is blocked.
+        // So on touch/mobile we start muted (video plays, no manual tap) and
+        // offer a sound toggle. On desktop we keep sound on.
+        var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+                       (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
         player = new YT.Player(elementId, {
           videoId: routine.youtubeId,
           playerVars: {
             controls: 0, rel: 0, modestbranding: 1, playsinline: 1,
             disablekb: 1, fs: 0, iv_load_policy: 3,
+            autoplay: isMobile ? 1 : 0,
+            mute: isMobile ? 1 : 0,
             start: routine.startSec || 0,
             end: (routine.endSec != null ? routine.endSec : undefined)
           },
@@ -3630,6 +3646,9 @@ body[data-camtest="true"] #camtest {
   }
 
   function play() { try { player && player.playVideo(); } catch (e) {} }
+  function mute() { try { player && player.mute(); } catch (e) {} }
+  function unMute() { try { player && player.unMute && player.unMute(); } catch (e) {} }
+  function isMuted() { try { return player && player.isMuted ? player.isMuted() : false; } catch (e) { return false; } }
   function pause() { try { player && player.pauseVideo(); } catch (e) {} }
   function seek(t) { try { player && player.seekTo(t, true); } catch (e) {} }
   function currentTime() { try { return player ? player.getCurrentTime() : 0; } catch (e) { return 0; } }
@@ -3640,6 +3659,7 @@ body[data-camtest="true"] #camtest {
   window.PULSE = window.PULSE || {};
   window.PULSE.youtube = {
     loadApi: loadApi, mount: mount, play: play, pause: pause, seek: seek,
+    mute: mute, unMute: unMute, isMuted: isMuted,
     currentTime: currentTime, duration: duration, stop: stop, destroy: destroy,
     STATE: { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 }
   };
@@ -5425,6 +5445,7 @@ body[data-camtest="true"] #camtest {
     dom.chart = section.querySelector('[data-role="chart"]');
     dom.yterror = section.querySelector('[data-role="yterror"]');
     dom.ytid = section.querySelector('[data-role="ytid"]');
+    dom.sound = section.querySelector('[data-role="sound"]');
     dom.gaugeUpper = section.querySelector('[data-role="gauge-upper"]');
     dom.gaugeLower = section.querySelector('[data-role="gauge-lower"]');
     dom.gaugeOverall = section.querySelector('[data-role="gauge-overall"]');
@@ -5941,7 +5962,19 @@ body[data-camtest="true"] #camtest {
         }
       },
       onStateChange: function (e) {
-        if (e.data === P().youtube.STATE.PLAYING) hideTapToPlay();
+        if (e.data === P().youtube.STATE.PLAYING) {
+          hideTapToPlay();
+          // If it autoplayed muted (mobile), offer a one-tap unmute.
+          if (dom.sound) {
+            if (P().youtube.isMuted && P().youtube.isMuted()) {
+              dom.sound.style.display = '';
+              dom.sound.textContent = '🔇 Tap for sound';
+              dom.sound.onclick = function () { P().youtube.unMute(); dom.sound.style.display = 'none'; };
+            } else {
+              dom.sound.style.display = 'none';
+            }
+          }
+        }
         if (e.data === P().youtube.STATE.ENDED) finish(true);   // R5.9
       },
       onError: function () { showYtError(); }

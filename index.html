@@ -2765,11 +2765,30 @@ body[data-camtest="true"] #camtest {
   }
   function clearSlot(index) { return setSlot(index, null); }
 
-  // Entries that are usable for recognition (have a descriptor + name).
+  // ---- Admin-published bank (bank.json, Option A) ------------------------
+  // The admin console (admin.html) enrols people and downloads bank.json, which
+  // is committed to the repo. The kiosk fetches it at startup so admin-enrolled
+  // faces are recognised without using this device's Photo Bank. Local Photo
+  // Bank entries (if any) are merged on top, deduped by name.
+  var adminBank = [];           // array of { name, weight, thumb, descriptor }
+  function fetchAdminBank() {
+    return fetch('bank.json', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('no bank.json'); return r.json(); })
+      .then(function (list) {
+        adminBank = Array.isArray(list) ? list.filter(function (e) { return e && e.descriptor && e.name; }) : [];
+        return adminBank;
+      })
+      .catch(function () { adminBank = []; return adminBank; });
+  }
+
+  // Entries usable for recognition: admin bank + local Photo Bank, deduped by
+  // name (local overrides admin for the same name).
   function enrolledEntries() {
-    return loadBank().filter(function (e) {
-      return e && e.descriptor && e.name;
-    });
+    var local = loadBank().filter(function (e) { return e && e.descriptor && e.name; });
+    var byName = {};
+    adminBank.forEach(function (e) { byName[e.name] = e; });
+    local.forEach(function (e) { byName[e.name] = e; });
+    return Object.keys(byName).map(function (k) { return byName[k]; });
   }
 
   // ---- Session history (R9.1) -------------------------------------------
@@ -2791,6 +2810,9 @@ body[data-camtest="true"] #camtest {
   }
   function clearSessions() { return writeJSON(SESS_KEY, []); }
 
+  // Prime the admin bank once at load so recognition has it ready.
+  fetchAdminBank();
+
   window.PULSE = window.PULSE || {};
   window.PULSE.bank = {
     slots: SLOTS,
@@ -2798,7 +2820,9 @@ body[data-camtest="true"] #camtest {
     save: saveBank,
     setSlot: setSlot,
     clearSlot: clearSlot,
-    enrolledEntries: enrolledEntries
+    enrolledEntries: enrolledEntries,
+    fetchAdminBank: fetchAdminBank,
+    adminCount: function () { return adminBank.length; }
   };
   window.PULSE.store = {
     loadSessions: loadSessions,
@@ -3414,6 +3438,10 @@ body[data-camtest="true"] #camtest {
   }
   function active() {
     return loadAll().then(function (list) {
+      // Priority: a routine flagged { "active": true } in routines.json (set by
+      // the admin console) wins; else config.activeRoutineId; else the first.
+      var flagged = list.filter(function (r) { return r && r.active === true; })[0];
+      if (flagged) return flagged;
       var id = CFG.activeRoutineId;
       return list.filter(function (r) { return r.id === id; })[0] || list[0] || null;
     });

@@ -127,9 +127,12 @@ window.CONFIG = {
     timeZone: 'Asia/Singapore'
   },
 
-  // --- Phase 2 Google Sheets (deferred; blank for now, §3.9) ---
+  // --- Phase 2 Google Sheets live logging (§3.9) ---
+  // url = the Apps Script Web App /exec URL.
+  // token = MUST match SHEET_TOKEN in apps-script/Code.gs exactly, or posts are
+  //         rejected with "bad token". Update this to the string you set.
   sheets: {
-    url: '',
-    token: ''
+    url: 'https://script.google.com/macros/s/AKfycbzTsz2fM1388oQFDSv7HGkFGYk7UeFFWd6Wngvwp1AU4uPp6maSOb1MnVerR5Fsrn6Wsg/exec',
+    token: 'smupg-7h3Qx9K2mNp4'
   }
 };

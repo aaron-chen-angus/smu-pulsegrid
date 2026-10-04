@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#05070D" />
+<title>SMU//PULSE//GRID — Admin</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+:root{
+  --bg:#05070D; --panel:rgba(10,20,35,0.55); --cyan:#00E5FF; --orange:#FF8A00;
+  --white-60:rgba(255,255,255,0.6); --white-30:rgba(255,255,255,0.3); --alert:#FF3B5C; --ok:#3DFFB0;
+  --glow:0 0 12px currentColor; --radius:2px;
+  --font-title:'Orbitron',ui-monospace,monospace; --font-body:'Rajdhani',ui-monospace,sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;min-height:100%;background:var(--bg);color:#e8f6ff;font-family:var(--font-body);font-weight:500;}
+body{background:radial-gradient(120% 80% at 50% 0%,rgba(0,229,255,0.05),transparent 60%),var(--bg);padding:28px 40px 64px;font-variant-numeric:tabular-nums;}
+a{color:var(--cyan);}
+.head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:4px;}
+.head h1{font-family:var(--font-title);font-weight:800;font-size:30px;margin:0;color:var(--cyan);letter-spacing:0.08em;text-shadow:var(--glow);}
+.head .slash{color:var(--orange);}
+.head .sub{color:var(--white-60);font-size:15px;}
+.lead{color:var(--white-60);max-width:900px;line-height:1.5;margin:6px 0 18px;}
+.lead b{color:#eaffff;}
+
+.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+.tab{font-family:var(--font-title);font-size:14px;letter-spacing:0.08em;text-transform:uppercase;color:var(--white-60);
+  background:transparent;border:1px solid rgba(0,229,255,0.3);border-radius:var(--radius);padding:10px 18px;cursor:pointer;}
+.tab.active{color:#05070D;background:var(--cyan);box-shadow:var(--glow);}
+.view{display:none;}
+.view.active{display:block;}
+
+.panel{position:relative;background:var(--panel);border:1px solid rgba(0,229,255,0.35);border-radius:var(--radius);
+  box-shadow:inset 0 0 24px rgba(0,229,255,0.06);padding:18px 20px;margin:16px 0;}
+.panel::before,.panel::after{content:"";position:absolute;width:12px;height:12px;border:2px solid var(--cyan);}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0;}
+.panel::after{top:-1px;right:-1px;border-left:0;border-bottom:0;}
+.panel-title{font-family:var(--font-title);font-size:13px;letter-spacing:0.3em;text-transform:uppercase;color:var(--white-60);margin:0 0 14px;}
+
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+label.field{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--white-60);font-family:var(--font-title);}
+input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid rgba(0,229,255,0.3);color:#eaffff;
+  font-family:var(--font-body);font-weight:600;font-size:15px;padding:9px 11px;border-radius:var(--radius);min-width:140px;}
+input:focus{outline:none;border-color:var(--cyan);box-shadow:var(--glow);}
+input[type=file]{display:none;}
+
+.btn{--c:var(--cyan);position:relative;min-height:48px;padding:0 22px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font-family:var(--font-title);font-weight:700;font-size:16px;letter-spacing:0.08em;text-transform:uppercase;color:var(--c);
+  background:transparent;border:1.5px solid var(--c);border-radius:var(--radius);cursor:pointer;overflow:hidden;}
+.btn::before{content:"";position:absolute;inset:0;background:var(--c);transform:translateX(-101%);transition:transform 250ms ease;z-index:-1;}
+.btn:hover:not([disabled]){color:#05070D;box-shadow:var(--glow);}
+.btn:hover:not([disabled])::before{transform:translateX(0);}
+.btn.primary{--c:var(--orange);}
+.btn[disabled]{opacity:0.4;cursor:not-allowed;}
+.mini{min-height:32px;padding:0 12px;font-family:var(--font-title);font-size:11px;letter-spacing:0.08em;color:var(--white-60);
+  background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:var(--radius);cursor:pointer;}
+.mini:hover{color:var(--cyan);border-color:var(--cyan);}
+
+/* People tab */
+.slots{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:4px;}
+.slot{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--panel);border:1px solid rgba(0,229,255,0.3);border-radius:var(--radius);}
+.slot.ok{border-color:rgba(61,255,176,0.5);}
+.slot.bad{border-color:rgba(255,59,92,0.6);}
+.thumb{position:relative;aspect-ratio:160/200;border:1px dashed rgba(0,229,255,0.3);border-radius:var(--radius);background:#02040a;
+  display:grid;place-items:center;overflow:hidden;cursor:pointer;color:var(--white-30);font-size:12px;text-align:center;}
+.thumb img{width:100%;height:100%;object-fit:cover;display:none;}
+.slot.filled .thumb img{display:block;}
+.slot.filled .thumb .ph{display:none;}
+.status{font-size:11px;min-height:1.2em;}
+.status.ok{color:var(--ok);} .status.bad{color:var(--alert);}
+.slots input{width:100%;}
+
+/* Reference builder */
+.previewwrap{display:grid;grid-template-columns:320px 1fr;gap:18px;align-items:start;}
+video{width:100%;background:#02040a;border:1px solid rgba(0,229,255,0.25);border-radius:var(--radius);display:block;}
+canvas.chart{width:100%;height:220px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);display:block;}
+.drop{border:1px dashed rgba(0,229,255,0.4);border-radius:var(--radius);padding:22px;text-align:center;color:var(--white-60);cursor:pointer;}
+.drop.dragover{border-color:var(--cyan);box-shadow:var(--glow);color:#eaffff;}
+.progress{height:10px;background:rgba(255,255,255,0.1);border-radius:999px;overflow:hidden;margin-top:10px;}
+.progress>span{display:block;height:100%;width:0%;background:linear-gradient(to right,var(--cyan),var(--orange));box-shadow:var(--glow);}
+.status-line{font-family:var(--font-title);font-size:13px;color:var(--white-60);margin-top:10px;min-height:1.2em;}
+.status-line.ok{color:var(--ok);} .status-line.err{color:var(--alert);}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--white-60);margin-bottom:6px;}
+.legend .sw{width:14px;height:3px;display:inline-block;margin-right:5px;vertical-align:middle;}
+
+/* Routines tab */
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.08);}
+th{font-family:var(--font-title);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--white-60);}
+td input[type=radio]{width:18px;height:18px;}
+.hint{color:var(--white-30);font-size:13px;font-style:italic;margin-top:8px;}
+.ok-pill{color:var(--ok);} .warn-pill{color:var(--orange);}
+code{color:var(--cyan);}
+.steps{color:var(--white-60);font-size:13px;line-height:1.7;max-width:900px;}
+.steps b{color:#eaffff;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>SMU<span class="slash">//</span>PULSE<span class="slash">//</span>GRID</h1>
+  <span class="sub">Admin Console — enrolment, exercise library, active routine</span>
+</div>
+<p class="lead">
+  This is the admin tool (Option A, no backend). Everything runs locally in your browser. You <b>download</b> the generated
+  files (<code>bank.json</code>, <code>references/&lt;id&gt;.json</code>, <code>routines.json</code>) and commit them to the repo;
+  the kiosk app reads them on load. Demo use only — no access control, use tester data only.
+</p>
+
+<div class="tabs">
+  <button class="tab active" data-tab="people">People</button>
+  <button class="tab" data-tab="library">Exercise Library</button>
+  <button class="tab" data-tab="routines">Active Routine</button>
+</div>
+
+<!-- ================= PEOPLE ================= -->
+<section class="view active" data-view="people">
+  <div class="panel"><div class="panel-title">Enrol People → bank.json</div>
+    <p class="lead" style="margin-top:0">Drop a clear, front-facing photo on each slot, type the name, and set weight (kg).
+      The browser computes a 128-D face descriptor and a 160×200 thumbnail. Click <b>Download bank.json</b> and commit it to the repo root.</p>
+    <div class="row" style="margin-bottom:12px">
+      <button class="mini" id="load-existing">Load existing bank.json</button>
+      <span class="status" id="people-status"></span>
+    </div>
+    <div class="slots" id="slots"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="dl-bank" disabled>Download bank.json</button>
+      <span class="hint" id="bank-count">0 enrolled</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LIBRARY (reference builder) ================= -->
+<section class="view" data-view="library">
+  <div class="panel"><div class="panel-title">1 · Routine details</div>
+    <div class="row">
+      <label class="field">Routine ID<input type="text" id="r-id" value="test90" /></label>
+      <label class="field">Title<input type="text" id="r-title" value="90-Second Test Routine" /></label>
+      <label class="field">YouTube ID<input type="text" id="r-yt" value="2VRPdBvuGow" /></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="field">Trim start (s)<input type="number" id="r-start" value="0" min="0" step="0.1" /></label>
+      <label class="field">Trim end (s, blank=full)<input type="number" id="r-end" value="90" min="0" step="0.1" /></label>
+      <label class="field">MET min<input type="number" id="r-metmin" value="2.8" step="0.1" /></label>
+      <label class="field">MET max<input type="number" id="r-metmax" value="8.0" step="0.1" /></label>
+      <label class="field">Sample FPS<input type="number" id="r-fps" value="15" min="1" max="30" /></label>
+    </div>
+  </div>
+
+  <div class="panel"><div class="panel-title">2 · Video (9:16 MP4, local only — never uploaded)</div>
+    <div class="drop" id="drop">Drop a <b>vertical 9:16 MP4</b> here, or <b>click to choose</b>. Nothing leaves your computer.</div>
+    <input type="file" id="file" accept="video/*" />
+    <div class="previewwrap" style="margin-top:14px">
+      <div>
+        <video id="video" muted playsinline preload="auto"></video>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="analyze" disabled>Analyse</button>
+          <button class="btn" id="cancel" disabled>Cancel</button>
+        </div>
+        <div class="progress"><span id="bar"></span></div>
+        <div class="status-line" id="lib-status">Load a video, then analyse.</div>
+      </div>
+      <div>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--cyan)"></span>Upper</span>
+          <span><span class="sw" style="background:var(--orange)"></span>Lower</span>
+          <span><span class="sw" style="background:#fff"></span>Overall</span>
+        </div>
+        <canvas class="chart" id="chart" width="820" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel"><div class="panel-title">3 · Export</div>
+    <div class="row">
+      <button class="btn primary" id="dl-ref" disabled>Download &lt;id&gt;.json</button>
+      <button class="btn" id="add-routine" disabled>Add to routine list ▸</button>
+      <span class="status-line ok" id="export-note"></span>
+    </div>
+    <p class="hint">Put the downloaded file in the repo at <code>references/&lt;id&gt;.json</code>. Then go to the <b>Active Routine</b> tab to include and select it.</p>
+  </div>
+</section>
+
+<!-- ================= ROUTINES ================= -->
+<section class="view" data-view="routines">
+  <div class="panel"><div class="panel-title">Routine list → routines.json</div>
+    <p class="lead" style="margin-top:0">Pick the <b>active</b> routine the kiosk shows after sign-in. Click <b>Download routines.json</b> and commit it to the repo root.</p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="mini" id="load-routines">Load existing routines.json</button>
+      <span class="status" id="routines-status"></span>
+    </div>
+    <table id="routine-table">
+      <thead><tr><th>Active</th><th>ID</th><th>Title</th><th>YouTube</th><th>Aspect</th><th>Trim</th><th>Reference</th><th></th></tr></thead>
+      <tbody id="routine-body"></tbody>
+    </table>
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="dl-routines" disabled>Download routines.json</button>
+    </div>
+  </div>
+
+  <div class="panel"><div class="panel-title">Deploy checklist</div>
+    <div class="steps">
+      1. Commit <b>bank.json</b> to the repo root (People tab).<br>
+      2. Commit each <b>references/&lt;id&gt;.json</b> (Exercise Library tab).<br>
+      3. Commit <b>routines.json</b> to the repo root (this tab) — the routine with the Active radio gets <code>"active": true</code>.<br>
+      4. Confirm each routine's YouTube video has <b>embedding allowed</b>.<br>
+      5. The kiosk reads these on load — no code changes needed.
+    </div>
+  </div>
+</section>
+
+<!-- face-api UMD (same pinned version as the kiosk) -->
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js" crossorigin="anonymous"></script>
+<script src="config.js"></script>
+<script src="pose-intensity.js"></script>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs';
+
+(function(){
+  'use strict';
+  var CFG = window.CONFIG || {};
+  var MODELS = (CFG.cdn && CFG.cdn.faceApiModels) || 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
+  var PI = window.PoseIntensity;
+
+  /* ---------------- Tabs ---------------- */
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      document.querySelector('.view[data-view="'+t.getAttribute('data-tab')+'"]').classList.add('active');
+    });
+  });
+
+  function download(name, text, mime){
+    var b=new Blob([text],{type:(mime||'application/json')+';charset=utf-8'});
+    var u=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=u;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(u);},1500);
+  }
+
+  /* ================= PEOPLE ================= */
+  var SLOTS=5, bank=new Array(SLOTS).fill(null);
+  var faceReady=false;
+  function loadFaceModels(){
+    if(faceReady) return Promise.resolve();
+    var n=window.faceapi.nets;
+    return Promise.all([
+      n.ssdMobilenetv1.loadFromUri(MODELS),
+      n.faceLandmark68Net.loadFromUri(MODELS),
+      n.faceRecognitionNet.loadFromUri(MODELS)
+    ]).then(function(){faceReady=true;});
+  }
+
+  var slotsEl=document.getElementById('slots');
+  for(var i=0;i<SLOTS;i++){
+    var d=document.createElement('div'); d.className='slot'; d.dataset.i=i;
+    d.innerHTML='<div class="thumb"><img alt=""><span class="ph">Drop photo<br>or click</span></div>'+
+      '<input type="file" accept="image/png,image/jpeg" class="file">'+
+      '<input type="text" class="name" placeholder="Name" autocomplete="off">'+
+      '<input type="number" class="weight" placeholder="kg (optional)" min="30" max="200">'+
+      '<div class="status"></div>';
+    slotsEl.appendChild(d);
+  }
+  slotsEl.querySelectorAll('.slot').forEach(function(slot){
+    var i=+slot.dataset.i;
+    var file=slot.querySelector('.file'), thumb=slot.querySelector('.thumb');
+    var nameI=slot.querySelector('.name'), wI=slot.querySelector('.weight'), st=slot.querySelector('.status');
+    function pick(){file.value='';file.click();}
+    thumb.addEventListener('click',pick);
+    ['dragenter','dragover'].forEach(function(ev){thumb.addEventListener(ev,function(e){e.preventDefault();thumb.style.borderColor='var(--cyan)';});});
+    ['dragleave','drop'].forEach(function(ev){thumb.addEventListener(ev,function(e){e.preventDefault();thumb.style.borderColor='';});});
+    thumb.addEventListener('drop',function(e){if(e.dataTransfer.files[0])enrol(e.dataTransfer.files[0]);});
+    file.addEventListener('change',function(){if(file.files[0])enrol(file.files[0]);});
+    nameI.addEventListener('input',function(){if(bank[i]){bank[i].name=nameI.value.trim();refreshBankBtn();}});
+    wI.addEventListener('change',function(){if(bank[i]){var w=parseInt(wI.value,10);bank[i].weight=(w>=30&&w<=200)?w:null;}});
+
+    function enrol(f){
+      st.textContent='Loading models…'; st.className='status';
+      loadFaceModels().then(function(){
+        return readImage(f);
+      }).then(function(img){
+        st.textContent='Detecting…';
+        return window.faceapi.detectAllFaces(img, new window.faceapi.SsdMobilenetv1Options({minConfidence:0.5}))
+          .withFaceLandmarks().withFaceDescriptors().then(function(res){return {img:img,res:res};});
+      }).then(function(o){
+        if(!o.res.length){reject('No face found');return;}
+        if(o.res.length>1){reject('More than one face');return;}
+        var r=o.res[0], box=r.detection.box;
+        var thumbData=crop(o.img,box);
+        bank[i]={name:(nameI.value.trim()||''),weight:(parseInt(wI.value,10)||null),thumb:thumbData,descriptor:Array.prototype.slice.call(r.descriptor)};
+        slot.querySelector('img').src=thumbData;
+        slot.classList.add('filled','ok');slot.classList.remove('bad');
+        st.textContent='Face OK';st.className='status ok';
+        if(!nameI.value.trim())nameI.focus();
+        refreshBankBtn();
+      }).catch(function(e){reject((e&&e.message)||'Failed');});
+      function reject(msg){slot.classList.remove('ok','filled');slot.classList.add('bad');st.textContent=msg;st.className='status bad';bank[i]=null;refreshBankBtn();}
+    }
+  });
+
+  function readImage(file){
+    return new Promise(function(res,rej){
+      if(!/^image\/(png|jpe?g)$/.test(file.type)){rej(new Error('Use JPG or PNG'));return;}
+      var url=URL.createObjectURL(file),img=new Image();
+      img.onload=function(){res(img);};img.onerror=function(){rej(new Error('Bad image'));};img.src=url;
+    });
+  }
+  function crop(src,box){
+    var tw=160,th=200,ar=tw/th;
+    var cx=box.x+box.width/2, cy=box.y+box.height/2;
+    var ch=box.height*1.9, cw=ch*ar;
+    if(cw<box.width*1.3){cw=box.width*1.3;ch=cw/ar;}
+    var sx=cx-cw/2, sy=cy-ch*0.52;
+    var sw=src.naturalWidth||src.width, sh=src.naturalHeight||src.height;
+    sx=Math.max(0,Math.min(sx,sw-1));sy=Math.max(0,Math.min(sy,sh-1));
+    var c=document.createElement('canvas');c.width=tw;c.height=th;
+    var ctx=c.getContext('2d');ctx.fillStyle='#02040a';ctx.fillRect(0,0,tw,th);
+    ctx.drawImage(src,sx,sy,Math.min(cw,sw-sx),Math.min(ch,sh-sy),0,0,tw,th);
+    return c.toDataURL('image/jpeg',0.85);
+  }
+  function enrolled(){return bank.filter(function(e){return e&&e.descriptor&&e.name;});}
+  function refreshBankBtn(){
+    var n=enrolled().length;
+    document.getElementById('bank-count').textContent=n+' enrolled'+(bank.filter(function(e){return e&&!e.name;}).length?' (some missing names)':'');
+    document.getElementById('dl-bank').disabled=n===0;
+  }
+  document.getElementById('dl-bank').addEventListener('click',function(){
+    download('bank.json', JSON.stringify(enrolled(),null,2));
+  });
+  document.getElementById('load-existing').addEventListener('click',function(){
+    fetch('bank.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).then(function(list){
+      (list||[]).slice(0,SLOTS).forEach(function(e,idx){
+        bank[idx]=e; var slot=slotsEl.children[idx];
+        slot.querySelector('img').src=e.thumb||''; slot.classList.add('filled','ok');
+        slot.querySelector('.name').value=e.name||''; slot.querySelector('.weight').value=e.weight||'';
+        slot.querySelector('.status').textContent='Face OK';slot.querySelector('.status').className='status ok';
+      });
+      document.getElementById('people-status').textContent='Loaded '+(list?list.length:0)+' from bank.json';
+      refreshBankBtn();
+    }).catch(function(){document.getElementById('people-status').textContent='No bank.json found yet';});
+  });
+
+  /* ================= EXERCISE LIBRARY (reference builder) ================= */
+  var landmarker=null, objectUrl=null, cancelled=false, lastRef=null;
+  var el={video:document.getElementById('video'),drop:document.getElementById('drop'),file:document.getElementById('file'),
+    analyze:document.getElementById('analyze'),cancel:document.getElementById('cancel'),bar:document.getElementById('bar'),
+    status:document.getElementById('lib-status'),chart:document.getElementById('chart'),dlRef:document.getElementById('dl-ref'),
+    addRoutine:document.getElementById('add-routine'),exportNote:document.getElementById('export-note')};
+  function setLib(m,k){el.status.textContent=m||'';el.status.className='status-line '+(k||'');}
+
+  function loadLandmarker(){
+    if(landmarker)return Promise.resolve(landmarker);
+    setLib('Loading MediaPipe…');
+    return FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm')
+      .then(function(fs){return PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:CFG.pose.modelLite,delegate:'GPU'},runningMode:'VIDEO',numPoses:1});})
+      .then(function(lm){landmarker=lm;return lm;})
+      .catch(function(){return FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm')
+        .then(function(fs){return PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:CFG.pose.modelLite,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});})
+        .then(function(lm){landmarker=lm;return lm;});});
+  }
+  function pick(){el.file.value='';el.file.click();}
+  el.drop.addEventListener('click',pick);
+  ['dragenter','dragover'].forEach(function(ev){el.drop.addEventListener(ev,function(e){e.preventDefault();el.drop.classList.add('dragover');});});
+  ['dragleave','drop'].forEach(function(ev){el.drop.addEventListener(ev,function(e){e.preventDefault();el.drop.classList.remove('dragover');});});
+  el.drop.addEventListener('drop',function(e){if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+  el.file.addEventListener('change',function(){if(el.file.files[0])loadFile(el.file.files[0]);});
+  function loadFile(f){
+    if(!/^video\//.test(f.type)&&!/\.(mp4|webm|mov|m4v)$/i.test(f.name)){setLib('Not a video file.','err');return;}
+    if(objectUrl)URL.revokeObjectURL(objectUrl);
+    objectUrl=URL.createObjectURL(f);el.video.src=objectUrl;
+    el.video.addEventListener('loadedmetadata',function om(){
+      el.video.removeEventListener('loadedmetadata',om);
+      var ar=el.video.videoWidth/el.video.videoHeight;
+      var vertical=ar<1;
+      setLib('Video '+fmt(el.video.duration)+' · '+el.video.videoWidth+'×'+el.video.videoHeight+(vertical?' (9:16 OK)':' — WARNING: not vertical'), vertical?'':'err');
+      el.analyze.disabled=false;
+    },{once:true});
+  }
+  function fmt(s){if(!isFinite(s))return'—';var m=Math.floor(s/60),x=Math.round(s%60);return m+':'+(x<10?'0':'')+x;}
+  function seekTo(t){return new Promise(function(res){function s(){el.video.removeEventListener('seeked',s);res();}el.video.addEventListener('seeked',s);el.video.currentTime=Math.min(t,Math.max(0,el.video.duration-0.001));});}
+
+  el.analyze.addEventListener('click',run);
+  el.cancel.addEventListener('click',function(){cancelled=true;});
+  function run(){
+    cancelled=false;el.analyze.disabled=true;el.cancel.disabled=false;el.dlRef.disabled=true;el.addRoutine.disabled=true;lastRef=null;
+    var fps=clamp(parseFloat(document.getElementById('r-fps').value),1,30,15);
+    var startSec=Math.max(0,parseFloat(document.getElementById('r-start').value)||0);
+    var endIn=parseFloat(document.getElementById('r-end').value), dur=el.video.duration;
+    var endSec=(!isNaN(endIn)&&endIn>startSec)?Math.min(endIn,dur):dur;
+    var step=1/fps, tracker=new PI.IntensityTracker(), binner=new PI.Binner(PI.defaults.binSeconds);
+    loadLandmarker().then(function(){
+      setLib('Analysing… 0%');var t=startSec;
+      (function stepF(){
+        if(cancelled){setLib('Cancelled.','err');el.analyze.disabled=false;el.cancel.disabled=true;return;}
+        if(t>=endSec){finish(startSec,endSec,binner);return;}
+        seekTo(t).then(function(){
+          var r=null;try{r=landmarker.detectForVideo(el.video,Math.round(t*1000));}catch(e){}
+          var lm=(r&&r.landmarks&&r.landmarks[0])||null;
+          var rel=t-startSec;
+          binner.add(rel,tracker.update(lm,rel));
+          var pct=Math.min(100,Math.round(((t-startSec)/(endSec-startSec))*100));
+          el.bar.style.width=pct+'%';setLib('Analysing… '+pct+'%');
+          t+=step;setTimeout(stepF,0);
+        });
+      })();
+    }).catch(function(e){setLib('MediaPipe failed: '+(e&&e.message||e),'err');el.analyze.disabled=false;el.cancel.disabled=true;});
+  }
+  function clamp(v,lo,hi,d){return isNaN(v)?d:Math.max(lo,Math.min(hi,v));}
+  function finish(startSec,endSec,binner){
+    var durationSec=+(endSec-startSec).toFixed(3);
+    var binCount=Math.ceil(durationSec/PI.defaults.binSeconds);
+    var s=binner.series(binCount);
+    lastRef={routineId:(document.getElementById('r-id').value||'routine').trim(),durationSec:durationSec,binSec:PI.defaults.binSeconds,upper:s.upper,lower:s.lower,overall:s.overall};
+    el.bar.style.width='100%';
+    var valid=s.overall.filter(function(v){return v!=null;}).length;
+    setLib('Done — '+s.overall.length+' bins ('+valid+' with pose).','ok');
+    el.analyze.disabled=false;el.cancel.disabled=true;el.dlRef.disabled=false;el.addRoutine.disabled=false;
+    drawChart(s);
+  }
+  function drawChart(s){
+    var c=el.chart,ctx=c.getContext('2d'),W=c.width,H=c.height,pad=14;ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+    var n=s.overall.length;if(n<2)return;
+    function x(i){return pad+(W-2*pad)*(i/(n-1));}function y(v){return (H-pad)-(H-2*pad)*(Math.max(0,Math.min(100,v))/100);}
+    function line(a,col,w){ctx.save();ctx.strokeStyle=col;ctx.lineWidth=w;ctx.shadowColor=col;ctx.shadowBlur=5;ctx.beginPath();var st=false;for(var i=0;i<n;i++){var v=a[i];if(v==null){st=false;continue;}var px=x(i),py=y(v);if(!st){ctx.moveTo(px,py);st=true;}else ctx.lineTo(px,py);}ctx.stroke();ctx.restore();}
+    line(s.upper,'#00E5FF',2);line(s.lower,'#FF8A00',2);line(s.overall,'#FFFFFF',3);
+  }
+  el.dlRef.addEventListener('click',function(){if(lastRef)download((lastRef.routineId||'reference')+'.json',JSON.stringify(lastRef));});
+  el.addRoutine.addEventListener('click',function(){
+    addRoutineFromLibrary();
+    document.querySelector('.tab[data-tab="routines"]').click();
+  });
+
+  /* ================= ROUTINES ================= */
+  var routines=[];
+  function renderRoutines(){
+    var tb=document.getElementById('routine-body');tb.innerHTML='';
+    routines.forEach(function(r,idx){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><input type="radio" name="active" '+(r.active?'checked':'')+'></td>'+
+        '<td>'+esc(r.id)+'</td><td>'+esc(r.title||'')+'</td><td>'+esc(r.youtubeId||'')+'</td>'+
+        '<td>'+esc(r.aspect||'9:16')+'</td><td>'+(r.startSec||0)+'–'+(r.endSec==null?'end':r.endSec)+'</td>'+
+        '<td>'+esc(r.reference||'')+'</td><td><button class="mini" data-del="'+idx+'">Remove</button></td>';
+      tr.querySelector('input').addEventListener('change',function(){routines.forEach(function(x){x.active=false;});r.active=true;});
+      tr.querySelector('[data-del]').addEventListener('click',function(){routines.splice(idx,1);renderRoutines();});
+      tb.appendChild(tr);
+    });
+    document.getElementById('dl-routines').disabled=routines.length===0;
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function addRoutineFromLibrary(){
+    var id=(document.getElementById('r-id').value||'routine').trim();
+    var r={id:id,title:document.getElementById('r-title').value||id,youtubeId:document.getElementById('r-yt').value.trim(),
+      aspect:'9:16',startSec:parseFloat(document.getElementById('r-start').value)||0,
+      endSec:(document.getElementById('r-end').value===''?null:parseFloat(document.getElementById('r-end').value)),
+      reference:'references/'+id+'.json',metMin:parseFloat(document.getElementById('r-metmin').value)||2.8,metMax:parseFloat(document.getElementById('r-metmax').value)||8.0};
+    var ex=routines.filter(function(x){return x.id===id;})[0];
+    if(ex){Object.assign(ex,r);}else{routines.push(r);}
+    if(!routines.some(function(x){return x.active;}))r.active=true;
+    renderRoutines();
+    document.getElementById('routines-status').textContent='Added/updated "'+id+'"';
+  }
+  document.getElementById('load-routines').addEventListener('click',function(){
+    fetch('routines.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).then(function(list){
+      routines=Array.isArray(list)?list:[];
+      if(!routines.some(function(x){return x.active;})&&routines[0])routines[0].active=true;
+      renderRoutines();document.getElementById('routines-status').textContent='Loaded '+routines.length+' routines';
+    }).catch(function(){document.getElementById('routines-status').textContent='No routines.json found';});
+  });
+  document.getElementById('dl-routines').addEventListener('click',function(){
+    download('routines.json',JSON.stringify(routines,null,2));
+  });
+
+  // Auto-load existing files for convenience.
+  document.getElementById('load-routines').click();
+})();
+</script>
+</body>
+</html>

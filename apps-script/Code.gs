@@ -21,7 +21,7 @@
  *   { token, sessions:[{...}], emotionScans:[{...}], intensityTimeline:[{...}] }
  */
 
-var SHEET_TOKEN = 'CHANGE-ME-to-a-long-random-string';
+var SHEET_TOKEN = 'smupg-7h3Qx9K2mNp4';
 
 // Column order per tab (must match §3.9 and the client's record builders).
 var COLS = {

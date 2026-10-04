@@ -3807,9 +3807,20 @@ body[data-camtest="true"] #camtest {
       duration_s: row.duration_s,
       bundle: bundle
     };
-    // Avoid duplicate saves of the same session_id (e.g. re-entering Summary).
+    // Dedupe, but ALLOW one upgrade: if a row for this session was already saved
+    // WITHOUT an out emotion scan and we now have one (reached Summary after
+    // Sign Out), persist again so the complete record — including emotionOut —
+    // reaches the Sheet. We only ever upgrade once (null -> has out scan).
     var existing = P().store.loadSessions();
-    if (existing.some(function (e) { return e.session_id === s.sessionId; })) return entry;
+    var prior = existing.filter(function (e) { return e.session_id === s.sessionId; })[0];
+    var haveOutNow = !!s.emotionOut;
+    if (prior) {
+      var priorHadOut = !!(prior.bundle && prior.bundle.emotionScans &&
+        prior.bundle.emotionScans.some(function (r) { return r && r.phase === 'out'; }));
+      if (priorHadOut || !haveOutNow) return entry;   // nothing new to add
+      // Upgrade: mark so the history list shows the latest, and re-post.
+      entry.session_id = s.sessionId;
+    }
     P().store.addSession(entry);
     // Phase 2: also push to Google Sheets if configured (non-blocking).
     sendToSheets(bundle);
@@ -6224,10 +6235,11 @@ body[data-camtest="true"] #camtest {
     if (!section) return;
     cache(section);
     render();
-    // Persist + log here too, so a session still records even if the user does
-    // not go through Sign Out → Summary. persist() dedupes by session_id, so
-    // reaching Summary later will not double-post.
-    if (P().record) P().record.persist(P().session.get());
+    // NOTE: we do NOT persist here. Persisting at Session Complete writes the
+    // row BEFORE the Sign Out emotion scan exists, and the Summary dedupe then
+    // blocks the complete row — which is why only "in" scans reached the Sheet.
+    // Persistence happens once, at Summary (after Sign Out), so emotionOut is
+    // included. See the Summary controller.
     P().speech && P().speech.cancel();
   }
 

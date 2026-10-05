@@ -1,9 +1,22 @@
 # SMU//PULSE//GRID — Technical, Clinical & Scientific Manual
 
-**Version 0.1.0 · Phase 1**
-A browser-based, follow-along exercise platform that recognises a participant by face, captures their emotional state before and after a workout, and tracks head-to-knee movement against a reference instructor video — entirely client-side, served as static files.
+**Version 0.1.0 · Phase 2 (live logging + analytics)**
+A browser-based, follow-along exercise platform that recognises a participant by face, captures their emotional state **before and after** a workout, and tracks head-to-knee movement against a reference instructor video — entirely client-side, served as static files. Finished sessions are logged live to a Google Sheet and visualised in an R Shiny analytics dashboard.
 
-> **Indicative wellness tool, not a medical device.** All emotion, stress, calorie and movement outputs are indicative cues derived from consumer-grade computer vision. They are **not** a diagnosis and must not be used for clinical decision-making. See [§10 Limitations & Disclaimers](#10-limitations--disclaimers).
+> **Indicative wellness tool, not a medical device.** All emotion, stress, calorie and movement outputs are indicative cues derived from consumer-grade computer vision. They are **not** a diagnosis and must not be used for clinical decision-making. See [§12 Limitations & Disclaimers](#12-limitations--disclaimers).
+
+---
+
+## Live links
+
+| Surface | URL | What it is |
+| --- | --- | --- |
+| **Kiosk app** | https://aaron-chen-angus.github.io/smu-pulsegrid | The participant-facing follow-along app. Opens at face **Sign In**. |
+| **Admin console** | https://aaron-chen-angus.github.io/smu-pulsegrid/admin.html | Operator-only: enrol people, manage the routine library, publish `bank.json`. |
+| **R Shiny dashboard** | https://01a10953-fcaf-2d0f-a681-f45028deda33.share.connect.posit.cloud/ | Live analytics over the Google Sheet (overview, session drill-down, emotion, cohort). |
+| **Live results (Google Sheet)** | https://docs.google.com/spreadsheets/d/1iYSFfDxljE1kT8cqAjHRvG2QVQ0374ZQRY-_e7cL_k8/edit?usp=sharing | The backing data store: three tabs (`Sessions`, `EmotionScans`, `IntensityTimeline`). |
+
+> The kiosk and admin are served from **GitHub Pages** (static). The dashboard runs on **Posit Connect Cloud**. The three surfaces share one Google Sheet as the single source of truth, written by the kiosk via a Google Apps Script Web App.
 
 ---
 
@@ -17,45 +30,84 @@ A browser-based, follow-along exercise platform that recognises a participant by
 6. [Reference comparison (user vs instructor)](#6-reference-comparison-user-vs-instructor)
 7. [Energy expenditure (calories)](#7-energy-expenditure-calories)
 8. [Session metrics](#8-session-metrics)
-9. [Data dictionary](#9-data-dictionary)
-10. [Limitations & disclaimers](#10-limitations--disclaimers)
-11. [Scientific references (APA)](#11-scientific-references-apa)
+9. [Admin console & bank publishing](#9-admin-console--bank-publishing)
+10. [Data capture, persistence & Google Sheets logging](#10-data-capture-persistence--google-sheets-logging)
+11. [R Shiny analytics dashboard](#11-r-shiny-analytics-dashboard)
+12. [Limitations & disclaimers](#12-limitations--disclaimers)
+13. [Data dictionary](#13-data-dictionary)
+14. [Scientific references (APA)](#14-scientific-references-apa)
 
 ---
 
 ## 1. Overview & architecture
 
-SMU//PULSE//GRID is a single-page application built from static assets with **no build step and no server-side runtime**. It is designed desktop-first in landscape (1920×1080 design canvas) and is also responsive to mobile portrait, where the instructor video becomes the forefront element and the webcam + pose skeleton is shown as a draggable picture-in-picture overlay.
+SMU//PULSE//GRID is a set of static assets with **no build step and no server-side runtime** of its own. The kiosk and admin console are plain HTML/CSS/vanilla JavaScript; the only backend is a Google Apps Script Web App that appends rows to a Google Sheet, and an R Shiny dashboard that reads that Sheet. It is designed desktop-first in landscape (1920×1080 design canvas) and is also responsive to mobile portrait, where the instructor video becomes the forefront element and the webcam + pose skeleton is shown as a draggable picture-in-picture overlay.
 
-### 1.1 Files
+### 1.1 System diagram
+
+```
+        ┌────────────────────┐        enrol faces,            ┌──────────────────┐
+        │   admin.html        │  publish bank.json / routines  │  GitHub repo /    │
+        │  (operator console) │ ─────────────────────────────▶ │  GitHub Pages     │
+        └────────────────────┘                                 └──────────────────┘
+                                                                        │ serves
+                                                                        ▼
+   participant ──▶ ┌────────────────────┐  reads bank.json, routines.json, references/*
+                   │   index.html         │
+                   │   (kiosk app)        │  POST session bundle (text/plain, token)
+                   └────────────────────┘ ───────────────────────────┐
+                                                                      ▼
+                                                        ┌──────────────────────────┐
+                                                        │  Apps Script Web App       │
+                                                        │  (apps-script/Code.gs)     │
+                                                        └──────────────────────────┘
+                                                                      │ appendRow
+                                                                      ▼
+                                                        ┌──────────────────────────┐
+                                                        │  Google Sheet (3 tabs)     │
+                                                        └──────────────────────────┘
+                                                                      │ public CSV export
+                                                                      ▼
+                                                        ┌──────────────────────────┐
+                                                        │  R Shiny dashboard         │
+                                                        │  (dashboard/app.R)         │
+                                                        └──────────────────────────┘
+```
+
+### 1.2 Files
 
 | File | Role |
 | --- | --- |
-| `index.html` | The entire app: all screens, CSS and JavaScript inline. |
-| `config.js` | Single source of truth for every tunable threshold (`window.CONFIG`). |
+| `index.html` | The entire kiosk app: all seven screens, CSS and JavaScript inline. Opens at **Sign In**. |
+| `admin.html` | Operator console (separate page): enrol up to **20** people, manage the routine library, publish `bank.json`. No authentication (demo). |
+| `config.js` | Single source of truth for every tunable threshold, the active routine, and the Google Sheets URL/token (`window.CONFIG`). |
 | `pose-intensity.js` | Shared movement-intensity engine (`window.PoseIntensity`), used identically by the live workout and the offline Reference Builder. |
-| `routines.json` | Routine catalogue (title, YouTube ID, aspect, trim, reference file, MET range). |
+| `bank.json` | Admin-published enrolment list (name + 128-D descriptor + thumbnail per person). Committed to the public repo; fetched by the kiosk at startup. |
+| `routines.json` | Routine catalogue (title, YouTube ID, aspect, trim, reference file, MET range, `active` flag). |
 | `references/<routineId>.json` | Pre-computed per-0.5 s instructor intensity for one routine. |
-| `reference-builder.html` | Offline tool: a local MP4 → `reference.json`. |
-| `apps-script/Code.gs` | Phase 2 Google Sheets backend (optional). |
+| `reference-builder.html` | Offline tool: a local MP4 → `references/<routineId>.json`. |
+| `apps-script/Code.gs` | Google Apps Script backend: receives one session bundle per POST and appends rows to the three Sheet tabs. |
+| `dashboard/app.R` | R Shiny analytics dashboard. Reads the Google Sheet via the public CSV export and renders charts with ggplot2. |
 
-### 1.2 Session flow (seven screens)
+### 1.3 Session flow (seven screens)
 
 ```
 PHOTO_BANK → SIGN_IN → READY → EXERCISE → COMPLETE → SIGN_OUT → SUMMARY
 ```
 
-1. **Photo Bank** — enrol up to five people (photo + name + optional body mass).
-2. **Sign In** — recognise the participant by face, then run a 5 s emotion scan.
+The kiosk **boots directly to `SIGN_IN`** — the participant-facing entry point is face login, not enrolment. Enrolment lives in the admin console; the on-device Photo Bank screen still exists but is reached only via a deep link (`#PHOTO_BANK`, the gear icon) for on-device testing.
+
+1. **Photo Bank** *(admin/testing only)* — on-device enrolment (photo + name + optional body mass).
+2. **Sign In** — recognise the participant by face against the merged bank, then run a 5 s emotion scan (**phase `in`**).
 3. **Ready** — show the routine, confirm camera framing, 5-4-3-2-1 countdown.
 4. **Exercise** — play the reference video and track movement in real time.
-5. **Session Complete** — headline metrics.
-6. **Sign Out** — verify identity by face, run a second emotion scan.
-7. **Summary** — personalised results, emotion comparison, export.
+5. **Session Complete** — headline metrics. (Nothing is persisted here — see [§10.2](#102-when-the-session-is-persisted-and-why).)
+6. **Sign Out** — verify identity by face, run a second emotion scan (**phase `out`**).
+7. **Summary** — personalised results, In→Out emotion comparison, export, **and the single point at which the finished session is persisted and pushed to the Sheet**.
 
-### 1.3 Privacy model (Phase 1)
+### 1.4 Privacy model
 
-Face descriptors (128-dimensional vectors) and thumbnails are stored **only** in the browser's `localStorage` and are **never** exported or transmitted. Exported data (JSON/CSV) and the optional Google Sheets log contain **no biometric templates and no images** — only the participant's name and derived numeric metrics (see [§9](#9-data-dictionary)).
+Face descriptors (128-dimensional vectors) and thumbnails live **only** in the browser's `localStorage` (kiosk and admin) and inside `bank.json` for admin-enrolled people. They are used **only** on-device for matching. Everything that leaves the browser — the JSON/CSV export and the live Google Sheets log — contains **no biometric templates and no images**, only the participant's name and derived numeric metrics (see [§13](#13-data-dictionary)).
 
 ### 1.4 Coordinate conventions
 
@@ -67,14 +119,30 @@ Face descriptors (128-dimensional vectors) and thumbnails are stored **only** in
 
 ## 2. Runtime libraries & models
 
-All libraries are loaded from a pinned CDN (jsDelivr / Google), so there is nothing to install.
+All kiosk/admin libraries are loaded from a pinned CDN (jsDelivr / Google), so there is nothing to install.
 
 | Library | Pinned version | Purpose |
 | --- | --- | --- |
-| `@vladmandic/face-api` | 1.7.15 | Face detection, 68 landmarks, 128-D descriptor, 7-class expression classifier |
+| `@vladmandic/face-api` | 1.7.15 | Face detection, 68 landmarks, 128-D descriptor, 7-class expression classifier (kiosk + admin) |
 | `@mediapipe/tasks-vision` | 0.10.35 | Pose Landmarker (33 landmarks, VIDEO mode) |
 | YouTube IFrame Player API | current | Reference video playback and timing (`getCurrentTime`, `getDuration`) |
+| Chart.js | 4 | Live intensity chart and Summary visualisations |
 | Web Speech API | browser-native | Spoken greetings/countdown (synthesis) and voice commands (recognition) |
+
+### 2.0 Full tech stack at a glance
+
+| Layer | Technology | Notes |
+| --- | --- | --- |
+| Kiosk + admin UI | Plain HTML, CSS, vanilla JavaScript | No npm, no bundler, no framework. CDN-only. |
+| Face recognition & emotion | `@vladmandic/face-api` 1.7.15 | SSD MobileNet v1 (enrol), TinyFaceDetector (live), Landmark 68, Recognition, Expression |
+| Pose tracking | `@mediapipe/tasks-vision` 0.10.35 | BlazePose `pose_landmarker_lite`, VIDEO mode, GPU→CPU fallback |
+| Video playback | YouTube IFrame Player API | Reference instructor video + playback clock |
+| Charts (app) | Chart.js 4 | Live gauges/timeline and Summary charts |
+| Voice | Web Speech API | Synthesis (all browsers) + recognition (Chromium only) |
+| Hosting | GitHub Pages | Static kiosk + admin |
+| Backend | Google Apps Script Web App | `doPost` appends to the Sheet; `text/plain` transport avoids CORS preflight |
+| Data store | Google Sheets (3 tabs) | `Sessions`, `EmotionScans`, `IntensityTimeline` |
+| Analytics | R + Shiny + shinydashboard + ggplot2 | Reads the Sheet via public CSV export; hosted on Posit Connect Cloud |
 
 ### 2.1 Face models (from the `@vladmandic/face-api` `/model` folder)
 
@@ -118,15 +186,20 @@ The 0.60 Euclidean threshold on 128-D FaceNet-style embeddings follows the conve
 
 ## 4. Emotion sensing & the Stress Indicator
 
-### 4.1 What is measured
+### 4.1 What is measured — two scans per session (in & out)
 
-During each scan (Sign In and Sign Out), the app samples the **7-class facial-expression probability distribution** at ≥ 5 Hz for 5 s, discarding frames whose face-detection confidence is too low and requiring a minimum number of valid frames. The seven classes are:
+Every session produces **two** emotion scans, driven by one shared implementation (`PULSE.emotionScan.run(sectionEl, phase)`) so both are measured identically:
+
+- **Phase `in`** — captured at **Sign In**, immediately after the face is recognised, before the workout. Stored in session memory as `session.emotionIn`.
+- **Phase `out`** — captured at **Sign Out**, after identity is re-verified, after the workout. Stored as `session.emotionOut`.
+
+During each scan the app samples the **7-class facial-expression probability distribution** at ≥ 5 Hz for 5 s, discarding frames whose face-detection confidence is below 0.6 and requiring at least 15 valid frames (a scan with fewer is flagged `insufficient` and the participant may still proceed). The seven classes are:
 
 ```
 neutral, happy, sad, angry, fearful, disgusted, surprised
 ```
 
-For each class it records the **mean** and **max** across valid frames.
+For each class it records the **mean** and **max** across valid frames. Capturing the same distribution at both ends lets the Summary and the dashboard compute the **In→Out change** — the emotion delta per class, the valence shift, and the stress-level transition. The `in` and `out` scans become the two rows of the `EmotionScans` table for that `session_id` (see [§10](#10-data-capture-persistence--google-sheets-logging) and [§13.2](#132-table-emotionscans-two-rows-per-session-phase-in-and-out)).
 
 ### 4.2 Derived affect indices
 
@@ -271,11 +344,150 @@ Shown on Session Complete and Summary, computed from the recorded timeline:
 
 ---
 
-## 9. Data dictionary
+## 9. Admin console & bank publishing
+
+The admin console (`admin.html`) is a **separate operator-only page**, deliberately kept out of the participant kiosk. It has no authentication (demo context) and three tabs.
+
+### 9.1 People (enrolment)
+
+- Up to **20 person slots**. For each: upload a photo, type a name, optionally set body mass.
+- Enrolment runs the same face-api pipeline as the kiosk (SSD MobileNet v1 detection, 128-D descriptor, 160×200 thumbnail), detecting **exactly one** face per photo.
+- The result is **Option A**: the admin **downloads `bank.json`**, a plain array of `{ name, weight, thumb, descriptor[128] }`, which is **committed to the public repo**. No MP4s and no raw photos are ever committed — only the derived descriptor and a small thumbnail.
+
+### 9.2 Library (routines)
+
+- Manage the entries in `routines.json` (title, YouTube ID, aspect, trim, reference file, MET range).
+- Exactly one routine can be flagged `"active": true`; the kiosk honours that flag first.
+
+### 9.3 Routines resolution order (kiosk)
+
+When the kiosk starts it resolves the routine to play by this priority:
+
+1. a routine flagged `{ "active": true }` in `routines.json` (set by the admin console); else
+2. `config.activeRoutineId`; else
+3. the first routine in the list.
+
+### 9.4 How the kiosk consumes admin output
+
+At startup the kiosk `fetch`es `bank.json` (`cache: 'no-store'`) and merges it with any on-device Photo Bank entries. People are keyed by name; a **local on-device entry overrides** an admin entry with the same name. This means an operator can enrol a cohort once in admin, commit `bank.json`, and every kiosk device recognises them without local enrolment.
+
+---
+
+## 10. Data capture, persistence & Google Sheets logging
+
+This section documents the end-to-end path from a finished workout to a row in the Sheet — including the specific fix that ensures **both** the `in` and `out` emotion scans are logged.
+
+### 10.1 The session bundle
+
+A finished session is mapped to the three §13 tables by `PULSE.record.toBundle(session)`, producing:
+
+```js
+{ sessions: [ …1 row… ],
+  emotionScans: [ …in row…, …out row… ],   // built from session.emotionIn & session.emotionOut
+  intensityTimeline: [ …one row per 0.5 s bin… ] }
+```
+
+`buildEmotionRows` emits a row for `in` whenever `session.emotionIn` exists and a row for `out` whenever `session.emotionOut` exists. Because the `out` scan is only captured at Sign Out, **the bundle is only complete once the participant has reached Sign Out → Summary.**
+
+### 10.2 When the session is persisted — and why
+
+Persistence happens **exactly once, at the Summary screen**, via `PULSE.record.persist(session)` called from the Summary controller's entry.
+
+This is deliberate and is the fix for a logging bug. Persisting at **Session Complete** (earlier, before Sign Out) wrote the row **before** `emotionOut` existed; a dedupe-by-`session_id` guard then blocked the later, complete row — so only `in` scans ever reached the Sheet. The corrected design:
+
+- **Session Complete persists nothing.**
+- **Summary persists once.** By then `emotionOut` exists, so the bundle contains both emotion rows.
+- The dedupe guard allows **one upgrade**: if a prior saved copy of this `session_id` lacked an `out` scan and the current session now has one, `persist` re-saves and re-posts so the complete record (including `emotionOut`) reaches the Sheet. It upgrades at most once (null → has-out).
+
+Net effect: every completed session logs **two** `EmotionScans` rows (`in` and `out`), and the dashboard's emotion-delta / valence-change charts populate.
+
+### 10.3 Transport to Google Sheets
+
+- `persist` calls `sendToSheets(bundle)`, which `POST`s to the Apps Script Web App URL in `config.js → sheets.url`.
+- The body is `JSON.stringify({ token, sessions, emotionScans, intensityTimeline })` sent with `Content-Type: text/plain;charset=utf-8`. Using `text/plain` keeps it a CORS "simple request", so no preflight is sent (Apps Script web apps cannot answer a preflight). The reply JSON is still readable (no `no-cors`).
+- The shared `token` must equal `SHEET_TOKEN` in `apps-script/Code.gs`, or the server rejects the POST with `bad token`.
+- On the server, `doPost` parses the body, checks the token, and `appendRows` writes each tab in the authoritative column order (writing the header row on first use).
+
+### 10.4 Resilience: offline queue + retry
+
+Logging is **non-blocking** and failure-tolerant:
+
+- If a POST fails (offline, server error, bad reply), the bundle is pushed onto a `localStorage` retry queue (`pulsegrid.sheetsQueue`).
+- On the next successful send — and on the next app load — `flushQueue` drains the queue, so sessions captured offline are eventually logged. A session is never lost because the network blipped.
+- The kiosk also keeps the last 50 sessions in `localStorage` and offers **JSON / CSV export** of the current or any stored session from the Summary screen, independent of the Sheet.
+
+### 10.5 Deploying the Apps Script backend (one-time)
+
+1. In the Google Sheet: **Extensions → Apps Script**, paste `apps-script/Code.gs`.
+2. Set `SHEET_TOKEN` to a long random string and put the same value in `config.js → sheets.token`.
+3. **Deploy → New deployment → Web app**; *Execute as: Me*, *Who has access: Anyone*.
+4. Copy the `/exec` Web App URL into `config.js → sheets.url`.
+5. Visit the URL in a browser — a `doGet` returns `{ ok: true, service: "pulsegrid", tabs: [...] }` to confirm the deployment.
+
+---
+
+## 11. R Shiny analytics dashboard
+
+`dashboard/app.R` is a self-contained Shiny app that visualises the live Sheet. It is hosted on **Posit Connect Cloud** and is a read-only consumer of the data.
+
+### 11.1 How it reads the Sheet
+
+The dashboard does **not** use `googlesheets4::read_sheet` (which returns list-columns that break downstream plotting). Instead it reads each tab via the **public CSV export** endpoint:
+
+```
+https://docs.google.com/spreadsheets/d/<SHEET_ID>/gviz/tq?tqx=out:csv&sheet=<tab>
+```
+
+with `readr::read_csv(..., col_types = cols(.default = col_character()))`, then coerces every column to a plain character vector (`unlist`) before casting the numeric columns itself. This avoids the `is.character(txt) is not TRUE` htmlwidgets/plotly error seen on Posit Cloud and keeps the data types predictable. The Sheet must be shared as **"Anyone with the link can view"** for the CSV endpoint to work. Data auto-refreshes every 60 s and on a manual **Refresh now** button.
+
+### 11.2 Charting choice
+
+All charts are rendered with **ggplot2 via `renderPlot`**, not plotly — a deliberate decision after plotly's htmlwidgets dependency chain failed on Posit Cloud. Each `renderPlot` is called with `bg = PANEL` so the plot device canvas matches the dark TRON panel (this removes the white strips that `coord_polar` otherwise leaves beside the circular Completion donut).
+
+### 11.3 Tabs
+
+| Tab | Contents |
+| --- | --- |
+| **Overview** | Value boxes (sessions, unique people, avg match %, total kcal); sessions over time; completion donut; match % distribution; upper-vs-lower effort. |
+| **Session drill-down** | Pick a session; duration/kcal/match/sync value boxes; intensity timeline (you vs instructor); emotion In-vs-Out; emotion change (Out − In). |
+| **Emotion & stress** | Stress level In vs Out; valence change In→Out; mean emotion profile across all scans. |
+| **Cohort analytics** | Match % vs sync scatter (with trend line); average match % per person; correlation heatmap of session metrics. |
+| **Raw data** | The three Sheet tabs as searchable tables. |
+
+### 11.4 In/Out dependency
+
+The **emotion change** and **valence change** charts need **both** an `in` and an `out` scan for a session. Before the §10.2 persistence fix the Sheet held only `in` rows, so these charts correctly showed *"Need both scans"*. Once a full run reaches Sign Out → Summary, both rows are logged and these charts populate automatically.
+
+### 11.5 Running / deploying the dashboard
+
+```r
+install.packages(c("shiny","shinydashboard","dplyr","tidyr","ggplot2",
+                   "DT","lubridate","readr","scales"))
+shiny::runApp("dashboard")              # local
+# Deploy to Posit Connect Cloud by publishing dashboard/app.R.
+```
+
+---
+
+## 12. Limitations & disclaimers
+
+- **Not a medical device.** Emotion, stress, calorie and movement outputs are indicative wellness cues from consumer webcams, not clinical measurements, and must not inform diagnosis or treatment.
+- **Displayed vs felt emotion.** Expression classifiers infer displayed facial configurations; these do not reliably indicate internal emotional states (Barrett et al., 2019).
+- **No validated norms.** The Stress Indicator thresholds are transparent heuristics, not population-calibrated cut-offs.
+- **Pose accuracy.** Single-camera markerless pose is sensitive to lighting, clothing, occlusion, camera height and field of view; derived intensities are relative, not absolute biomechanical quantities.
+- **Calorie estimates** use a generic MET model and default body mass when unknown.
+- **Lighting & framing** materially affect both recognition and emotion sensing.
+- **No authentication on the admin console.** It is a demo tool; anyone with the URL can enrol or edit routines. Do not expose it to untrusted users without adding access control.
+- **Public data store.** `bank.json` and the Google Sheet backing the dashboard are world-readable by design in this deployment. They contain names + descriptors (bank) and names + numeric metrics (Sheet), but no images or raw video.
+- **Browser support.** Camera, microphone and Web Speech require a secure context (HTTPS or `localhost`); voice recognition is Chromium-only and needs internet. iOS Safari does **not** implement SpeechRecognition, so spoken voice commands do not work on iPhone (an Apple platform limitation).
+
+---
+
+## 13. Data dictionary
 
 Phase 1 exports (and the Phase 2 Google Sheet) use three tables with stable **snake_case** names and **ISO 8601** timestamps in **Asia/Singapore** (`+08:00`). Export JSON writes one object `{ sessions, emotionScans, intensityTimeline }`; Export CSV writes three files. **No descriptors or thumbnails are ever included.**
 
-### 9.1 Table `Sessions` (one row per workout)
+### 13.1 Table `Sessions` (one row per workout)
 
 | Column | Type | Units / range | Description |
 | --- | --- | --- | --- |
@@ -308,7 +520,7 @@ Phase 1 exports (and the Phase 2 Google Sheet) use three tables with stable **sn
 | `weight_defaulted` | boolean | TRUE/FALSE | TRUE if the 65 kg default was used. |
 | `app_version` | string | — | Build version. |
 
-### 9.2 Table `EmotionScans` (two rows per session: phase `in` and `out`)
+### 13.2 Table `EmotionScans` (two rows per session: phase `in` and `out`)
 
 | Column | Type | Units / range | Description |
 | --- | --- | --- | --- |
@@ -331,7 +543,7 @@ Phase 1 exports (and the Phase 2 Google Sheet) use three tables with stable **sn
 | `stress_level` | string | Normal/Elevated/High | Stress Indicator level. |
 | `stress_driver` | string | — | Driver phrase at Elevated/High (else blank). |
 
-### 9.3 Table `IntensityTimeline` (one row per 0.5 s bin)
+### 13.3 Table `IntensityTimeline` (one row per 0.5 s bin)
 
 | Column | Type | Units / range | Description |
 | --- | --- | --- | --- |
@@ -345,7 +557,7 @@ Phase 1 exports (and the Phase 2 Google Sheet) use three tables with stable **sn
 | `ref_overall` | number \| null | 0–100 | Reference overall intensity. |
 | `match_pct` | number \| null | 0–100 | Per-bin Match %. |
 
-### 9.4 Underlying raw/engine values (not exported directly)
+### 13.4 Underlying raw/engine values (not exported directly)
 
 These feed the exported metrics and are documented for completeness.
 
@@ -359,7 +571,7 @@ These feed the exported metrics and are documented for completeness.
 | `expr_k(frame)` | Per-frame probability of emotion *k* | face-api |
 | `descriptor[128]` | Face embedding (browser-only, never exported) | face-api |
 
-### 9.5 Key constants (from `config.js`)
+### 13.5 Key constants (from `config.js`)
 
 | Constant | Value | Used for |
 | --- | --- | --- |
@@ -379,19 +591,7 @@ These feed the exported metrics and are documented for completeness.
 
 ---
 
-## 10. Limitations & disclaimers
-
-- **Not a medical device.** Emotion, stress, calorie and movement outputs are indicative wellness cues from consumer webcams, not clinical measurements, and must not inform diagnosis or treatment.
-- **Displayed vs felt emotion.** Expression classifiers infer displayed facial configurations; these do not reliably indicate internal emotional states (Barrett et al., 2019).
-- **No validated norms.** The Stress Indicator thresholds are transparent heuristics, not population-calibrated cut-offs.
-- **Pose accuracy.** Single-camera markerless pose is sensitive to lighting, clothing, occlusion, camera height and field of view; derived intensities are relative, not absolute biomechanical quantities.
-- **Calorie estimates** use a generic MET model and default body mass when unknown.
-- **Lighting & framing** materially affect both recognition and emotion sensing.
-- **Browser support.** Camera, microphone and Web Speech require a secure context (HTTPS or `localhost`); voice recognition is Chromium-only and needs internet.
-
----
-
-## 11. Scientific references (APA)
+## 14. Scientific references (APA)
 
 Ainsworth, B. E., Haskell, W. L., Herrmann, S. D., Meckes, N., Bassett, D. R., Tudor-Locke, C., Greer, J. L., Vezina, J., Whitt-Glover, M. C., & Leon, A. S. (2011). 2011 Compendium of Physical Activities: A second update of codes and MET values. *Medicine & Science in Sports & Exercise, 43*(8), 1575–1581. https://doi.org/10.1249/MSS.0b013e31821ece12
 
@@ -413,4 +613,4 @@ Schroff, F., Kalenichenko, D., & Philbin, J. (2015). FaceNet: A unified embeddin
 
 ---
 
-*SMU//PULSE//GRID — Phase 1. This manual documents indicative wellness functionality for research and demonstration. It is not a certified medical or diagnostic system.*
+*SMU//PULSE//GRID — Phase 2 (static kiosk + admin on GitHub Pages, Google Sheets live logging, R Shiny analytics on Posit Connect Cloud). This manual documents indicative wellness functionality for research and demonstration. It is not a certified medical or diagnostic system.*
